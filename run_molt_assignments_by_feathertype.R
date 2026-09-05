@@ -1,6 +1,6 @@
 # run_molt_assignments_by_feathertype.R
 # Per-individual, per-feather-type isotope assignment maps (δ2H + δ18O)
-# Uses isoscape rasters d2h_GS.tif and d18o_GS.tif in repo root and SIA_Results.csv
+# Uses isoscape rasters d2h_GS.tif and d18o_GS.tif in repo root and an SIA CSV
 # Outputs written to molt_assignments_outputs/
 
 library(raster)
@@ -10,9 +10,18 @@ library(assignR)
 library(sp)
 
 # ---- User inputs ----
-input_csv <- "SIA_Results.csv"
+# Prefer SIA_Results_KLMA.csv if present, else fall back to SIA_Results.csv
+if (file.exists("SIA_Results_KLMA.csv")) {
+  input_csv <- "SIA_Results_KLMA.csv"
+} else if (file.exists("SIA_Results.csv")) {
+  input_csv <- "SIA_Results.csv"
+} else {
+  stop("No input CSV found. Place SIA_Results_KLMA.csv or SIA_Results.csv in the repo root.")
+}
+message("Using input CSV: ", input_csv)
+
 out_dir <- "molt_assignments_outputs"
-dir.create(out_dir, showWarnings = FALSE)
+if(!dir.exists(out_dir)) dir.create(out_dir, showWarnings = FALSE)
 
 # focal points (updated per user)
 focal_points <- data.frame(
@@ -37,16 +46,22 @@ df <- read.csv(input_csv, stringsAsFactors = FALSE, check.names = TRUE)
 # detect columns
 feather_col <- names(df)[grepl("^Feather$", names(df), ignore.case=TRUE)][1]
 envelope_col <- names(df)[grepl("ID.*envelop|Envelope|ID_on_envelope|ID.on.envelope|ID on envelope", names(df), ignore.case=TRUE)][1]
-if(is.na(feather_col)) stop("No 'Feather' column found in CSV (case-insensitive).")
+# fallback: look for 'ID' or 'ID.on.envelope' or 'ID_on_envelope' etc.
+if(is.na(feather_col)) stop("No 'Feather' column found in CSV (case-insensitive). Please ensure a column named 'Feather' exists.")
 if(is.na(envelope_col)) {
-  # fallback
-  envelope_col <- names(df)[1]
-  warning(paste("Could not detect 'ID on envelope' column; using", envelope_col))
+  # try a few common alternatives
+  possible_ids <- names(df)[grepl("Envelope|ID|Sample|ID_on_envelope|ID.on.envelope|ID on envelope", names(df), ignore.case=TRUE)]
+  if(length(possible_ids) > 0) {
+    envelope_col <- possible_ids[1]
+    warning(paste("Using detected ID column:", envelope_col))
+  } else {
+    stop("Could not detect an 'ID on envelope' column. Please provide a column named like 'ID on envelope' or 'ID_on_envelope'.")
+  }
 }
 
-d2H_col <- names(df)[grepl("d2h|d2H|delta2H", names(df), ignore.case=TRUE)][1]
-d18O_col <- names(df)[grepl("d18o|d18O|delta18O", names(df), ignore.case=TRUE)][1]
-if(is.na(d2H_col) || is.na(d18O_col)) stop("Could not find d2H and/or d18O columns in CSV.")
+d2H_col <- names(df)[grepl("^d2H$|d2h|delta2H", names(df), ignore.case=TRUE)][1]
+d18O_col <- names(df)[grepl("^d18O$|d18o|delta18O", names(df), ignore.case=TRUE)][1]
+if(is.na(d2H_col) || is.na(d18O_col)) stop("Could not find d2H and/or d18O columns in CSV. Ensure columns named like 'd2H' and 'd18O' are present.")
 
 # load isoscapes
 d2H_file <- list.files(".", pattern="(?i)d2h.*tif$", full.names=TRUE, perl=TRUE)[1]
@@ -55,8 +70,8 @@ if(is.na(d2H_file) || is.na(d18O_file)) stop("d2h_GS.tif or d18o_GS.tif not foun
 
 iso_d2H <- raster(d2H_file)
 iso_d18O <- raster(d18O_file)
-# define study extent (Oregon to Baja, with buffer)
-study_ext <- extent(-130, -110, 20, 55)   # covers Oregon to Baja + NW
+# define study extent (Oregon to Baja + buffer)
+study_ext <- extent(-130, -110, 20, 55)
 iso_d2H <- crop(iso_d2H, study_ext)
 iso_d18O <- crop(iso_d18O, study_ext)
 iso_d18O <- resample(iso_d18O, iso_d2H, method="bilinear")
@@ -79,7 +94,7 @@ df$sample_name <- paste0(gsub("[^A-Za-z0-9_\\-]", "_", df[[envelope_col]]),
                          "_ID", df$Original.ID, "_", gsub("[^A-Za-z0-9_\\-]", "_", df[[feather_col]]))
 
 # classify feather types
-df$feathertype <- ifelse(grepl("flight|rectrix|secondary|primary|tertial|primary|rectrice", df[[feather_col]], ignore.case=TRUE),
+df$feathertype <- ifelse(grepl("flight|rectrix|secondary|primary|tertial|primaries|secondaries", df[[feather_col]], ignore.case=TRUE),
                          "Flight", "Body")
 
 # helper: safe write raster
