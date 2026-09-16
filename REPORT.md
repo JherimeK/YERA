@@ -66,24 +66,35 @@ environment) plus `terra`/`sf`.
 
 ## Results
 
+*(Two corrections were made after initial posting, based on feedback that the
+maps and stats didn't line up -- see "Post-review corrections" below. The
+numbers here are the corrected ones.)*
+
 **The body-vs-flight split is real and consistent across birds**, not just an
 artifact of the population average:
 
 | | Body feathers | Flight feathers |
 |---|---|---|
-| Population probability, Mainland W. Mexico | **61%** | 7% |
+| Population probability, Mexico (Baja + mainland) | **61%** (8% Baja + 53% mainland) | 7% (1% Baja + 6% mainland) |
 | Population probability, OR+WA+ID+UT | 9% | **75%** |
 | Individuals with that region as leading signal | 9 of 11 | 12 of 12 |
+| 50%-credible-region area, range across individuals | 1,500-282,000 km^2 | 61-131,000 km^2 |
+| 50%-credible-region area, population summary | 389,000 km^2 | **3,900 km^2** |
 
 - **Body feathers**: 9 of 11 KLMA individuals show 0.47-0.97 probability mass
-  in mainland western Mexico (Sonora/Sinaloa/Nayarit/Jalisco latitudes).
-  This matches the account that body (Formative/Definitive Basic) molt can
-  complete on the wintering grounds.
+  in Mexico; most of that is mainland western Mexico (Sonora/Sinaloa/Nayarit/
+  Jalisco latitudes), but 4 of 11 individuals (1422-02211, -02214, -02216,
+  -02217) put more than 10% of their own probability specifically on the
+  **Baja California peninsula** itself. This matches the account that body
+  (Formative/Definitive Basic) molt can complete on the wintering grounds,
+  and doesn't pin down mainland vs. peninsula as sharply as the population
+  average alone suggests.
 - **Flight feathers**: all 12 individuals with usable data show 0.30-1.00
   probability mass in the Pacific Northwest interior (WA/ID/UT, with OR
   itself typically getting a smaller secondary share), matching the account
   that the complete prebasic molt of remiges happens primarily on/near
-  breeding habitat. Very little mass lands in Mexico for flight feathers.
+  breeding habitat. Very little mass lands in Mexico for flight feathers,
+  and essentially none of that is Baja specifically.
 - The two exceptions line up with independent red flags: **1422-02212**
   (Mexico signal near zero for both feather categories) is the same bird
   whose Nape sample was QC-flagged for anomalous combustion chemistry, and
@@ -91,14 +102,54 @@ artifact of the population average:
   feather pairs above. That QC flags and biological outliers coincide is
   reassuring for the overall pattern, but these three birds' results should
   be treated with more caution than the rest.
-- Individual-bird credible regions are broad (50%-credible areas commonly
-  >1,000,000 km^2) -- single feathers, on their own, are weakly informative.
-  The population-level pattern is where the signal is; see caveats below on
-  why (weak d18O calibration, no species-specific data, assumed isoscape SE).
-- No individual shows a strong (>10%) signal within the Baja California
-  peninsula specifically, for either feather category, though Baja is a
-  reasonable a priori hypothesis for wintering -- the isotope data here
-  don't support it as the primary answer.
+- Individual credible-region size varies a lot (see table above) -- some
+  individuals, especially after combining two flight feathers assumed to
+  share an origin, resolve to a strikingly small area (tens of km^2, close
+  to a single isoscape grid cell). Take those at face value cautiously: this
+  is partly a real effect of combining two correlated dual-isotope
+  measurements (multiplying two probability surfaces that already overlap
+  well sharpens the result quickly), not necessarily true pinpoint
+  biological precision. The population-level pattern (which is not a
+  simple average of these tight individual regions -- see next section) is
+  the more robust takeaway; see the calibration caveats below for why.
+
+## Post-review corrections
+
+After the first version of this analysis was posted, closer review of the
+maps surfaced two real bugs, both now fixed in `scripts/02` and
+`scripts/03`:
+
+1. **50/75/90% "credible regions" were computed wrong.** The first version
+   used `assignR::qtlRaster(..., thresholdType = "area")`, which (per
+   assignR's own definition) just returns exactly that fraction of the
+   *total map area* regardless of the probability distribution -- so every
+   individual's "50% credible area" was ~half the study area by
+   construction, not a meaningful precision estimate. Fixed to
+   `thresholdType = "prob"` (smallest area containing that much cumulative
+   probability), which is what "50/75/90% credible region" is supposed to
+   mean. This changed the area numbers substantially (see Results) and is
+   the reason the population maps now also show 50/75/90% credible-region
+   contour lines instead of nothing.
+2. **The Baja California vs. mainland Mexico split was silently broken.**
+   The zone used to report `P_Baja_CA` was built by splitting Mexico's
+   cropped polygon into fragments and unioning the ones whose centroid fell
+   west of a longitude cutoff -- for reasons not fully diagnosed (a handful
+   of small cropping-artifact fragments probably corrupted the union), the
+   resulting polygon didn't actually overlap any raster cells, so every
+   individual's `P_Baja_CA` silently came out as exactly 0.0000 despite the
+   maps clearly showing probability mass over the peninsula. Fixed by
+   splitting with a simple longitude bounding-box intersection instead,
+   verified to actually overlap the peninsula's raster cells. The combined
+   Baja+mainland Mexico total is unchanged (this was a mis-attribution
+   between the two sub-zones, not a change in overall signal).
+3. The first version of the population map also used a plain linear color
+   scale, which made it look almost entirely blank -- the underlying
+   probability surfaces are extremely right-skewed (the top ~0.01% of
+   pixels carry most of the visible contrast), so a linear scale compresses
+   everything else to one color. Maps now use data-driven quantile color
+   breaks plus the corrected credible-region contour lines, and the
+   per-individual grid figures now show a real probability legend (the
+   original version suppressed it to save space, which was a mistake).
 
 ## Outputs
 - `outputs/maps/population_body_vs_flight.png` -- the main figure.
@@ -109,7 +160,9 @@ artifact of the population average:
   (Oregon, California, Nevada, Arizona, New Mexico, WA/ID/UT, Baja CA,
   Mainland W Mexico, within 100 km of Klamath Marsh).
 - `outputs/rasters/*.tif` -- full posterior surfaces (per feather, per
-  individual-category, and population) for further GIS work.
+  individual-category, and population), plus `qtl50/75/90_credible_region.tif`
+  (binary 50/75/90% credible-region masks per individual/population surface),
+  for further GIS work.
 
 ## Key limitations (read before over-interpreting)
 1. **No Rallidae calibration data exist anywhere** in the standard
