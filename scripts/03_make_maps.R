@@ -92,4 +92,23 @@ nm <- names(indiv)
 make_grid(grep("Body$", nm), "outputs/maps/individuals_body.png")
 make_grid(grep("Flight$", nm), "outputs/maps/individuals_flight.png")
 
+# ---- habitat prior diagnostic map -------------------------------------------
+# Shows the wetland/wet-cropland suitability layer itself (before it's
+# combined with the isotope likelihood), so it's possible to sanity-check
+# that it actually captures Klamath Marsh and known coastal marsh areas.
+if (file.exists("data/habitat_prior.tif")) {
+  hp <- rast("data/habitat_prior.tif")
+  hp_aoi <- crop(hp, ext(-125, -101, 17, 49))
+  png("outputs/maps/habitat_prior.png", width = 1100, height = 950, res = 130)
+  plot(hp_aoi, col = hcl.colors(50, "Greens 3", rev = TRUE),
+       main = "Wetland / wet-cropland habitat suitability prior\n(ESA WorldCover 2021)",
+       mar = c(2, 2, 3, 5), axes = TRUE, plg = list(cex = 0.7, title = "suitability"))
+  plot(st_geometry(us_sf), add = TRUE, border = "grey40", lwd = 0.6)
+  plot(st_geometry(mx_sf), add = TRUE, border = "grey40", lwd = 0.6)
+  points(focal_points$lon, focal_points$lat, pch = 17, col = "blue", cex = 1.1)
+  text(focal_points$lon, focal_points$lat, labels = focal_points$site,
+       pos = 4, cex = 0.65, col = "blue4", offset = 0.4)
+  dev.off()
+}
+
 message("Maps written to outputs/maps/")

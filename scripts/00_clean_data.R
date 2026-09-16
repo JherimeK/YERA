@@ -94,6 +94,40 @@ klma$Run_date <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_character_ els
 klma$POW_d2H_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d2H_su"])
 klma$POW_d18O_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d18O_su"])
 
+# ---- 2b. Pull in the "1272-31742" reference bird ----------------------------
+# This individual is in the original SIRFER QC file (job 24-215.2) but was
+# never included in the KLMA study CSV -- its band-number prefix (1272- vs.
+# the KLMA birds' 1422-) doesn't match, and per user confirmation it's a
+# reference specimen, not part of the core KLMA population. It's kept for
+# comparison (same treatment as the "San Diego ref bird" rows).
+ref_lines <- qraw[str_detect(qraw, ",1272-31742,")]
+ref_df <- do.call(rbind, lapply(ref_lines, function(ln) {
+  parts <- str_split(ln, ",")[[1]]
+  data.frame(Original_ID = as.integer(parts[2]), d2H = as.numeric(parts[3]), d18O = as.numeric(parts[4]),
+             WtH = as.numeric(parts[5]), WtO = as.numeric(parts[6]), OHratio = as.numeric(parts[7]),
+             Envelope_ID = parts[8], Feather_type_raw = parts[9], Feather_cat = NA_character_,
+             stringsAsFactors = FALSE)
+}))
+ref_df <- ref_df %>%
+  mutate(
+    Feather_type_raw = str_trim(Feather_type_raw),
+    Feather_type_clean = str_trim(str_remove(Feather_type_raw, "\\s*\\d+$")),
+    Feather_cat = ifelse(str_detect(Feather_type_clean, regex(flight_kw, ignore_case = TRUE)),
+                          "Flight", "Body"),
+    Feather_cat_check = Feather_cat,
+    Group = "Reference_1272-31742"
+  )
+klma <- bind_rows(klma, ref_df)
+
+# job batch / precision lookup for the reference bird's samples too
+klma$Job_ID <- sapply(as.character(klma$Original_ID), function(x) {
+  v <- sample_batch[[x]]
+  if (is.null(v)) NA_character_ else v
+})
+klma$Run_date <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_character_ else batch_info[[j]]$run_date)
+klma$POW_d2H_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d2H_su"])
+klma$POW_d18O_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d18O_su"])
+
 # ---- 3. QA flags -------------------------------------------------------------
 # %O:%H ratio for keratin combustion is typically ~3.6-4.5. Flag rows well
 # outside that range (possible incomplete combustion / contamination) and
