@@ -111,6 +111,17 @@ names(habitat_prior) <- "habitat_suitability"
 mos <- do.call(merge, pieces)
 habitat_prior <- merge(mos, habitat_prior)  # fills any gaps outside tile coverage with 0
 
+# Force an exact grid + CRS match to the isoscape template: repeated
+# merge()/resample() through this pipeline leaves tiny (~1e-4 degree)
+# floating point drift in the extent, and terra's CRS WKT for d2h_GS.tif
+# ("unknown" datum based on WGS84) is textually different from (though
+# equivalent to) the WorldCover tiles' full EPSG:4326 WKT. Both are enough
+# to fail assignR::pdRaster()'s internal compareGeom() check on the prior,
+# so pin both explicitly rather than relying on approximate equality.
+habitat_prior <- resample(habitat_prior, template, method = "near")
+crs(habitat_prior) <- crs(template)
+names(habitat_prior) <- "habitat_suitability"
+
 writeRaster(habitat_prior, "data/habitat_prior.tif", overwrite = TRUE)
 unlink("data/worldcover_tmp", recursive = TRUE)
 

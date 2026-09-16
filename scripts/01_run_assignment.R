@@ -123,8 +123,6 @@ png("outputs/maps/calibration_regression_d2H_waterbird_sensitivity.png", width =
 cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = TRUE, verboseLM = TRUE)
 dev.off()
 
-iso_stack <- isoStack(cal_H, cal_O)
-
 # ---- 3b. Habitat prior (wetland / wet-cropland suitability) ----------------
 # Built by scripts/05_build_habitat_prior.R from ESA WorldCover 10m land
 # cover (herbaceous wetland = 1.0, cropland = 0.3, permanent water = 0.1,
@@ -133,7 +131,26 @@ iso_stack <- isoStack(cal_H, cal_O)
 # happens to match the target d2H/d18O values by elevation alone but isn't
 # habitat Yellow Rails would ever occupy (wet sedge meadow / marsh / wet
 # agriculture only, per Cornell's Birds of the World account).
+#
+# assignR::pdRaster.isoStack() has a real bug when mask and prior are both
+# supplied: it crops the isoscape to mask internally, but never crops prior
+# to match, so the elementwise assign*prior multiplication silently
+# recycles two differently-sized vectors (confirmed: every single sample's
+# posterior came out exactly zero when tested this way). The fix is to
+# pre-crop/mask BOTH the isoscape and the prior to the AOI ourselves and
+# pass mask = NULL to pdRaster, so nothing gets cropped a second time
+# inside the function.
+aoi_crop_mask <- function(r) {
+  r <- crop(r, aoi)
+  mask(r, aoi)
+}
+cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)
+cal_O$isoscape.rescale <- aoi_crop_mask(cal_O$isoscape.rescale)
+iso_stack <- isoStack(cal_H, cal_O)
+
 habitat_prior <- rast("data/habitat_prior.tif")
+habitat_prior <- resample(aoi_crop_mask(habitat_prior), iso_stack[[1]], method = "near")
+crs(habitat_prior) <- crs(iso_stack[[1]])
 
 # ---- 4. Load cleaned sample data --------------------------------------------
 samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
@@ -143,7 +160,7 @@ unknown_df <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
 
 message("Running per-feather dual-isotope assignment for ", nrow(unknown_df), " samples...")
 png("outputs/maps/per_feather_grid.png", width = 1400, height = 1400)
-pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = aoi, prior = habitat_prior, genplot = TRUE)
+pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = NULL, prior = habitat_prior, genplot = TRUE)
 dev.off()
 names(pd_feather) <- unknown_df$ID
 writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
