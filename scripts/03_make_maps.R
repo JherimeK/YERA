@@ -2,13 +2,16 @@
 # Final presentation maps: population-level Body vs Flight comparison, and a
 # faceted grid of all individual-category posteriors.
 #
-# The raw posterior surfaces are extremely right-skewed (the 99.9th
-# percentile pixel is often 100-1000x the median pixel), so a plain linear
-# color scale makes almost the entire map read as a single flat color and
-# hides the pattern. Quantile-based color breaks (computed from the data
-# itself) are used instead so the full color ramp is actually used, and the
-# 50/75/90% credible regions (from script 02, thresholdType = "prob") are
-# drawn as contour outlines for a quantitatively meaningful "legend".
+# Colors are classified directly by credible region (50% / 50-75% / 75-90% /
+# outside 90%, from script 02's thresholdType = "prob" rasters), not by
+# quantile-of-pixel-value. An earlier version used quantile color breaks,
+# which -- because the underlying probability surfaces are extremely
+# right-skewed -- made broad, actually-low-probability areas look "hot" by
+# relative rank even though they hold very little of the true cumulative
+# probability. That made the map's coloring and the credible-region area
+# stats tell visually different stories. Classifying by credible region
+# directly means the colored area on the map IS the credible-region area
+# in the stats table, by construction.
 
 suppressMessages({
   library(terra)
@@ -36,55 +39,50 @@ focal_points <- data.frame(
   lat = c(42.9766389, 37.4533611, 32.7931111)
 )
 
-quantile_breaks <- function(v, n = 8) {
-  v <- v[!is.na(v) & v > 0]
-  b <- unique(quantile(v, probs = seq(0, 1, length.out = n), na.rm = TRUE))
-  c(0, b)
+# Credible-region class: 4 = top 50% (most likely), 3 = 50-75%, 2 = 75-90%,
+# 1 = outside the 90% credible region (essentially negligible probability).
+cr_class <- function(qname) {
+  c50 <- qtl50[[qname]]; c75 <- qtl75[[qname]]; c90 <- qtl90[[qname]]
+  cls <- terra::ifel(c50 == 1, 4, terra::ifel(c75 == 1, 3, terra::ifel(c90 == 1, 2, 1)))
+  names(cls) <- qname
+  cls
 }
 
-contour_outline <- function(qtl_layer, name, ...) {
-  bin <- qtl_layer[[name]]
-  if (isTRUE(global(bin, sum, na.rm = TRUE)[1, 1] > 0)) {
-    poly <- as.polygons(bin, dissolve = TRUE)
-    poly <- poly[poly[[1]][[1]] == 1, ]
-    if (nrow(poly) > 0) plot(poly, add = TRUE, ...)
-  }
-}
+cr_colors <- c("grey94", "#FED976", "#FD8D3C", "#B10026")
+cr_labels <- c("outside 90% region", "75-90%", "50-75%", "top 50%")
 
-plot_one <- function(layer, qname, main) {
-  breaks <- quantile_breaks(values(layer, mat = FALSE))
-  pal <- hcl.colors(length(breaks) - 1, "YlOrRd", rev = TRUE)
-  plot(layer, breaks = breaks, col = pal, type = "interval", main = main,
-       mar = c(2, 2, 3, 7), axes = TRUE, plg = list(cex = 0.55, title = "prob./cell"))
+plot_one <- function(qname, main) {
+  cls <- cr_class(qname)
+  plot(cls, breaks = c(0.5, 1.5, 2.5, 3.5, 4.5), col = cr_colors, type = "interval",
+       main = main, mar = c(2, 2, 3, 9), axes = TRUE,
+       plg = list(cex = 0.65, legend = cr_labels, title = "credible region"))
   plot(st_geometry(us_sf), add = TRUE, border = "grey30", lwd = 0.6)
   plot(st_geometry(mx_sf), add = TRUE, border = "grey30", lwd = 0.6)
-  contour_outline(qtl90, qname, border = "grey20", lwd = 0.8, lty = 3)
-  contour_outline(qtl75, qname, border = "grey10", lwd = 1.1, lty = 2)
-  contour_outline(qtl50, qname, border = "black", lwd = 1.6, lty = 1)
   points(focal_points$lon, focal_points$lat, pch = 17, col = "blue", cex = 1.1)
   text(focal_points$lon, focal_points$lat, labels = focal_points$site,
        pos = 4, cex = 0.6, col = "blue4", offset = 0.4)
-  legend("bottomleft", legend = c("50% credible region", "75%", "90%"),
-         lty = c(1, 2, 3), lwd = c(1.6, 1.1, 0.8), col = c("black", "grey10", "grey20"),
-         bg = "white", box.col = "grey50", cex = 0.6, inset = 0.02)
 }
 
-png("outputs/maps/population_body_vs_flight.png", width = 1700, height = 950, res = 130)
+png("outputs/maps/population_body_vs_flight.png", width = 1800, height = 950, res = 130)
 par(mfrow = c(1, 2))
-plot_one(pop[["Population_Body"]], "Population_Body",
-         "KLMA Yellow Rail -- Body feathers\n(population mean origin probability)")
-plot_one(pop[["Population_Flight"]], "Population_Flight",
-         "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability)")
+plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean origin probability)")
+plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability)")
 dev.off()
 
-# ---- individual grids: shared quantile breaks + terra's native per-panel legend
+# ---- individual grids: same credible-region classification per panel -------
+# type = "interval" (not "classes") for the multi-layer case: terra's
+# "classes" plotting auto-detects factor levels per layer and can assign
+# inconsistent colors/legends across panels when different birds don't
+# have all 4 classes present. "interval" with explicit breaks avoids that
+# entirely and gives every panel the same fixed color mapping.
 make_grid <- function(idx, outfile, w = 1900, h = 1500) {
-  sub <- indiv[[idx]]
-  breaks <- quantile_breaks(values(sub, mat = FALSE))
-  pal <- hcl.colors(length(breaks) - 1, "YlOrRd", rev = TRUE)
+  cls_list <- lapply(names(indiv)[idx], cr_class)
+  cls_stack <- rast(cls_list)
+  names(cls_stack) <- names(indiv)[idx]
   png(outfile, width = w, height = h, res = 140)
-  plot(sub, breaks = breaks, col = pal, type = "interval", nc = 4,
-       plg = list(cex = 0.5, title = "prob./cell"), mar = c(1.5, 1.5, 2, 5))
+  plot(cls_stack, breaks = c(0.5, 1.5, 2.5, 3.5, 4.5), col = cr_colors, type = "interval",
+       nc = 4, plg = list(cex = 0.5, legend = cr_labels, title = "credible region"),
+       mar = c(1.5, 1.5, 2, 7))
   dev.off()
 }
 

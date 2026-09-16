@@ -238,7 +238,20 @@ across Mexico, California, and the Pacific Northwest interior.
   `thresholdType = "area"`, which is not a real credible region) and the
   Baja/mainland Mexico zone split (was silently returning 0 for Baja on
   every individual); fixed map color scaling and missing legends.
-- Correction 2 (this version): added the ESA WorldCover habitat
-  suitability prior (fixing a real assignR bug in the process), added
-  bird 1272-31742 as a reference individual, added the carbon/nitrogen
-  isotope cross-check.
+- Correction 2: added the ESA WorldCover habitat suitability prior
+  (fixing a real assignR bug in the process), added bird 1272-31742 as a
+  reference individual, added the carbon/nitrogen isotope cross-check.
+- Correction 3 (this version): map colors are now classified directly by
+  credible region (50% / 50-75% / 75-90% / outside 90%) instead of by
+  quantile-of-pixel-value. The quantile approach made broad,
+  actually-low-probability areas look "hot" by relative rank, so the
+  map's coloring and the credible-region area stats told visually
+  different stories (a "28,000 km^2 credible area" stat next to a map
+  that looked like most of the Southwest was lit up). Now the colored
+  area on the map matches the credible-region area in the stats table by
+  construction. Also dropped `per_feather_grid.png` -- an uncurated
+  byproduct of assignR's own internal plotting (terra caps it at 16 of
+  the 53 samples, with a color scheme unrelated to this project's maps)
+  that was never a real deliverable; `individuals_body.png`/
+  `individuals_flight.png` (one panel per bird, feathers already
+  combined) are the per-bird figures to use.

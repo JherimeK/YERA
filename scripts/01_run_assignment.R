@@ -159,9 +159,11 @@ samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original
 unknown_df <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
 
 message("Running per-feather dual-isotope assignment for ", nrow(unknown_df), " samples...")
-png("outputs/maps/per_feather_grid.png", width = 1400, height = 1400)
-pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = NULL, prior = habitat_prior, genplot = TRUE)
-dev.off()
+# genplot = FALSE: pdRaster's own internal plot is a raw, uncurated
+# byproduct (terra caps it at 16 of our 53 panels, with assignR's default
+# color scheme unrelated to this project's maps) -- not a real deliverable.
+# scripts/03_make_maps.R builds the actual per-bird figures.
+pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = NULL, prior = habitat_prior, genplot = FALSE)
 names(pd_feather) <- unknown_df$ID
 writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
 
