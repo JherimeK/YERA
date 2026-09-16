@@ -125,6 +125,16 @@ dev.off()
 
 iso_stack <- isoStack(cal_H, cal_O)
 
+# ---- 3b. Habitat prior (wetland / wet-cropland suitability) ----------------
+# Built by scripts/05_build_habitat_prior.R from ESA WorldCover 10m land
+# cover (herbaceous wetland = 1.0, cropland = 0.3, permanent water = 0.1,
+# everything else = 0), on the exact same grid as the isoscape above. This
+# is what keeps the assignment out of mountain/forest/desert terrain that
+# happens to match the target d2H/d18O values by elevation alone but isn't
+# habitat Yellow Rails would ever occupy (wet sedge meadow / marsh / wet
+# agriculture only, per Cornell's Birds of the World account).
+habitat_prior <- rast("data/habitat_prior.tif")
+
 # ---- 4. Load cleaned sample data --------------------------------------------
 samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
 samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original_ID, sep = "__")
@@ -133,7 +143,7 @@ unknown_df <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
 
 message("Running per-feather dual-isotope assignment for ", nrow(unknown_df), " samples...")
 png("outputs/maps/per_feather_grid.png", width = 1400, height = 1400)
-pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = aoi, genplot = TRUE)
+pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = aoi, prior = habitat_prior, genplot = TRUE)
 dev.off()
 names(pd_feather) <- unknown_df$ID
 writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
