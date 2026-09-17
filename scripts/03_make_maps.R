@@ -25,6 +25,8 @@ indiv <- rast("outputs/rasters/pd_per_individual_category.tif")
 qtl50 <- rast("outputs/rasters/qtl50_credible_region.tif")
 qtl75 <- rast("outputs/rasters/qtl75_credible_region.tif")
 qtl90 <- rast("outputs/rasters/qtl90_credible_region.tif")
+qual <- read.csv("outputs/tables/assignment_summary.csv", stringsAsFactors = FALSE)
+flagged <- with(qual, surface[single_cell_dominant_flag | shared_peak_flag])
 
 us_sf <- st_as_sf(maps::map("state", regions = c("california", "nevada", "arizona",
                                                    "new mexico", "oregon", "utah", "idaho",
@@ -76,9 +78,14 @@ dev.off()
 # have all 4 classes present. "interval" with explicit breaks avoids that
 # entirely and gives every panel the same fixed color mapping.
 make_grid <- function(idx, outfile, w = 1900, h = 1500) {
-  cls_list <- lapply(names(indiv)[idx], cr_class)
+  nms <- names(indiv)[idx]
+  cls_list <- lapply(nms, cr_class)
   cls_stack <- rast(cls_list)
-  names(cls_stack) <- names(indiv)[idx]
+  # flag birds where single_cell_dominant_flag or shared_peak_flag is TRUE
+  # (see REPORT.md "Match quality") -- their credible region should not be
+  # read as a precise result.
+  titles <- ifelse(nms %in% flagged, paste0(nms, "  [low match quality]"), nms)
+  names(cls_stack) <- titles
   png(outfile, width = w, height = h, res = 140)
   plot(cls_stack, breaks = c(0.5, 1.5, 2.5, 3.5, 4.5), col = cr_colors, type = "interval",
        nc = 4, plg = list(cex = 0.5, legend = cr_labels, title = "credible region"),
@@ -109,4 +116,29 @@ if (file.exists("data/habitat_prior.tif")) {
   dev.off()
 }
 
+# ---- publication-ready summary table ----------------------------------------
+tbl <- qual[order(match(qual$Group, c("KLMA", "KLMA_summary", "Reference_1272-31742",
+                                       "San_Diego_ref")), qual$Envelope_ID, qual$Feather_cat), ]
+tbl$Bird <- ifelse(tbl$Group == "KLMA_summary", "All KLMA (population mean)", tbl$Envelope_ID)
+tbl$Origin_type <- ifelse(tbl$Group %in% c("Reference_1272-31742", "San_Diego_ref"),
+                           "Reference (non-KLMA)", "KLMA")
+tbl$Quality_note <- ifelse(tbl$single_cell_dominant_flag | tbl$shared_peak_flag,
+                            "Low match quality -- see Methods", "")
+pub_tbl <- data.frame(
+  Bird = tbl$Bird,
+  Type = tbl$Origin_type,
+  Feathers = tbl$Feather_cat,
+  n_feathers = tbl$n_feathers,
+  `Peak_lon` = tbl$peak_lon,
+  `Peak_lat` = tbl$peak_lat,
+  `50pct_credible_km2` = tbl$area50_km2,
+  `90pct_credible_km2` = tbl$area90_km2,
+  `P_Mexico_pct` = round(100 * (tbl$P_Baja_CA + tbl$P_Mainland_W_Mexico), 1),
+  `P_PacificNW_pct` = round(100 * (tbl$P_Oregon + tbl$P_Washington_Idaho_Utah + tbl$P_California), 1),
+  Quality_note = tbl$Quality_note,
+  check.names = FALSE
+)
+write.csv(pub_tbl, "outputs/tables/Table1_manuscript.csv", row.names = FALSE)
+
 message("Maps written to outputs/maps/")
+message("Publication table written to outputs/tables/Table1_manuscript.csv")
