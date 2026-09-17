@@ -71,31 +71,40 @@ plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean
 plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability)")
 dev.off()
 
-# ---- individual grids: same credible-region classification per panel -------
-# type = "interval" (not "classes") for the multi-layer case: terra's
-# "classes" plotting auto-detects factor levels per layer and can assign
-# inconsistent colors/legends across panels when different birds don't
-# have all 4 classes present. "interval" with explicit breaks avoids that
-# entirely and gives every panel the same fixed color mapping.
-make_grid <- function(idx, outfile, w = 1900, h = 1500) {
+# ---- individual grids: split into main (clean) figure + supplementary -----
+# (flagged) figure. type = "interval" (not "classes") for the multi-layer
+# case: terra's "classes" plotting auto-detects factor levels per layer and
+# can assign inconsistent colors/legends across panels when different birds
+# don't have all 4 classes present. "interval" with explicit breaks avoids
+# that entirely and gives every panel the same fixed color mapping.
+make_grid <- function(idx, outfile, w = 1900, h = 1500, mark_flagged = FALSE) {
   nms <- names(indiv)[idx]
+  if (length(nms) == 0) return(invisible(NULL))
   cls_list <- lapply(nms, cr_class)
   cls_stack <- rast(cls_list)
-  # flag birds where single_cell_dominant_flag or shared_peak_flag is TRUE
-  # (see REPORT.md "Match quality") -- their credible region should not be
-  # read as a precise result.
-  titles <- ifelse(nms %in% flagged, paste0(nms, "  [low match quality]"), nms)
+  titles <- if (mark_flagged) ifelse(nms %in% flagged, paste0(nms, "  [low match quality]"), nms) else nms
   names(cls_stack) <- titles
-  png(outfile, width = w, height = h, res = 140)
+  nc <- min(4, length(nms))
+  nr <- ceiling(length(nms) / nc)
+  png(outfile, width = w, height = h * nr / 3, res = 140)
   plot(cls_stack, breaks = c(0.5, 1.5, 2.5, 3.5, 4.5), col = cr_colors, type = "interval",
-       nc = 4, plg = list(cex = 0.5, legend = cr_labels, title = "credible region"),
+       nc = nc, plg = list(cex = 0.5, legend = cr_labels, title = "credible region"),
        mar = c(1.5, 1.5, 2, 7))
   dev.off()
 }
 
 nm <- names(indiv)
-make_grid(grep("Body$", nm), "outputs/maps/individuals_body.png")
-make_grid(grep("Flight$", nm), "outputs/maps/individuals_flight.png")
+body_idx <- grep("Body$", nm); flight_idx <- grep("Flight$", nm)
+body_main <- body_idx[!nm[body_idx] %in% flagged]; body_flag <- body_idx[nm[body_idx] %in% flagged]
+flight_main <- flight_idx[!nm[flight_idx] %in% flagged]; flight_flag <- flight_idx[nm[flight_idx] %in% flagged]
+
+make_grid(body_main, "outputs/maps/individuals_body.png")
+make_grid(flight_main, "outputs/maps/individuals_flight.png")
+make_grid(body_flag, "outputs/maps/individuals_body_supplementary_flagged.png")
+make_grid(flight_flag, "outputs/maps/individuals_flight_supplementary_flagged.png")
+
+message("Body: ", length(body_main), " main + ", length(body_flag), " flagged; ",
+        "Flight: ", length(flight_main), " main + ", length(flight_flag), " flagged")
 
 # ---- habitat prior diagnostic map -------------------------------------------
 # Shows the wetland/wet-cropland suitability layer itself (before it's
