@@ -111,20 +111,21 @@ environment) plus `terra`/`sf`.
 
 | | Body feathers | Flight feathers |
 |---|---|---|
-| Population probability, Mexico (Baja + mainland) | **56%** (5% Baja + 51% mainland) | 6% (0.6% Baja + 5% mainland) |
-| Population probability, OR+WA+CA+ID+UT | 31% | **82%** |
+| Population probability, Mexico (Baja + mainland) | **58%** | 6% |
+| Population probability, OR+WA+CA+ID+UT | 31% | **86%** |
 | KLMA individuals with Mexico > 50% of their own probability | 6 of 10 | -- |
-| KLMA individuals with OR+WA+CA > 50% | -- | 10 of 12 |
-| 50%-credible-region area, population summary | **28,000 km^2** | **570 km^2** |
-| 50%-credible-region area, range across individuals | 240-43,000 km^2 | 60-70,000 km^2 |
+| KLMA individuals with OR+WA+CA > 50% | -- | 11 of 12 |
+| 50%-credible-region area, population summary | **57,000 km^2** | **1,900 km^2** |
 
-Adding the habitat prior shrank the credible regions dramatically (population
-body 50%-area dropped from 389,000 km^2 pre-habitat-mask to 28,000 km^2;
-flight from 3,900 to 570 km^2) without changing the basic body-vs-flight
-story -- the broad zone-level split was already coming from the isotope
-gradient itself, and the habitat mask sharpens *where within* that zone,
-excluding the mountain/forest/desert terrain that isotope value alone
-couldn't rule out.
+Adding the habitat prior shrank the credible regions substantially
+(population body 50%-area: 389,000 km^2 pre-habitat-mask -> 57,000 km^2;
+flight: 3,900 -> 1,900 km^2) without changing the basic body-vs-flight story
+-- the broad zone-level split was already coming from the isotope gradient
+itself, and the habitat mask sharpens *where within* that zone, excluding
+the mountain/forest/desert terrain that isotope value alone couldn't rule
+out. **Individual-level credible areas vary hugely and many are not
+trustworthy at face value -- see "Match quality" below before citing any
+single bird's area as a precise result.**
 
 - **Body feathers** remain concentrated in Mexico (mainland + Baja
   combined), consistent with body (Formative/Definitive Basic) molt
@@ -180,11 +181,58 @@ across Mexico, California, and the Pacific Northwest interior.
   maps, including the reference birds.
 - `outputs/maps/calibration_regression_*.png` -- calibration diagnostics.
 - `outputs/tables/assignment_summary.csv` -- per-individual and population
-  peak location, 50/75/90% credible areas, and probability mass by zone.
+  peak location, 50/75/90% credible areas, probability mass by zone, and
+  three match-quality columns (see "Match quality" below):
+  `peak_share`, `low_precision_flag`, `single_cell_dominant_flag`,
+  `shared_peak_flag`.
 - `data/isotopes_combined_summary.csv` -- C/N results cross-referenced
   against H/O geographic assignment.
 - `outputs/rasters/*.tif` -- full posterior surfaces, for further GIS work.
 - `data/habitat_prior.tif` -- the habitat suitability layer, for reuse.
+
+## Match quality: not every tight credible region means a precise result
+
+Manual review after posting the last version found that several individuals'
+strikingly small credible regions (near-single-pixel, ~61 km^2) weren't
+independent precise results -- **unrelated birds with different measured
+isotope values were landing on the exact same grid cell.** Traced to its
+source: parts of the study area (eastern Idaho/Wyoming in particular) have
+an unusually *flat* isoscape (d2H standard deviation ~4.8 permil over a
+5x4 degree box there, vs. ~17 permil over the same size area in California),
+so the isotope data barely discriminates locations within it. Combined with
+a habitat-suitability layer that's sparse to begin with, several birds'
+broad, weakly-informative likelihood surfaces were all getting tipped onto
+whichever single cell had the locally highest habitat weight in that flat
+zone -- not a real match to that bird's own isotope signature. This is a
+real property of the data and calibration (see limitations below, esp. the
+assumed rather than measured isoscape SE) interacting with a sparse habitat
+mask, not a coding bug, but it means **a small credible area is not on its
+own evidence of a confident result.**
+
+Two mitigations are in the pipeline now:
+1. The habitat prior is Gaussian-smoothed (~18 km) before use, so nearby
+   cells get partial credit instead of a hard cliff to zero. This helped
+   partially (e.g. reference bird 1272-31742's flight credible area grew
+   from 7,062 to 14,907 km^2) but did not eliminate the effect for the most
+   affected individuals -- the underlying flat-isoscape problem is still
+   there.
+2. Three flag columns in `assignment_summary.csv`:
+   - `peak_share`: fraction of a surface's entire probability mass held by
+     its single top cell. High values (>0.3, flagged as
+     `single_cell_dominant_flag`) mean the "credible region" is really
+     one dominant pixel.
+   - `shared_peak_flag`: TRUE if this surface's peak cell is identical to
+     another bird's peak cell -- the direct signature of the failure mode
+     above.
+   - `low_precision_flag`: TRUE if area50_km2 < 1,000 km^2 (a coarser,
+     easier-to-eyeball version of the same concern).
+
+At last count, 14 of 26 individual surfaces (roughly half) carry at least
+one of these flags. **For a manuscript, individual-level "this bird's
+origin was pinpointed to N km^2" claims should not be made for flagged
+birds** -- lean on the population-level zone probabilities instead, which
+are far more robust (they're area-weighted sums over the whole zone, not
+dependent on one argmax pixel).
 
 ## Key limitations (read before over-interpreting)
 1. **No Rallidae calibration data exist anywhere** in the standard
@@ -255,3 +303,8 @@ across Mexico, California, and the Pacific Northwest interior.
   that was never a real deliverable; `individuals_body.png`/
   `individuals_flight.png` (one panel per bird, feathers already
   combined) are the per-bird figures to use.
+- Correction 4 (this version): found and partially mitigated the
+  single-cell convergence issue described in "Match quality" above --
+  Gaussian-smoothed the habitat prior and added `peak_share`,
+  `low_precision_flag`, `single_cell_dominant_flag`, and
+  `shared_peak_flag` columns to the summary table.

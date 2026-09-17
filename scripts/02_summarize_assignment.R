@@ -108,12 +108,11 @@ for (i in seq_len(nrow(groups))) {
   res <- combine_feathers(sub)
   combo <- res$surface
   names(combo) <- outname
-  if (nlyr(sub) > 1) {
-    png(paste0("outputs/maps/combo_", gsub("[^A-Za-z0-9_]", "_", outname), ".png"),
-        width = 800, height = 600)
-    plot(combo, main = paste(outname, "(", res$method, ")"))
-    dev.off()
-  }
+  # (no per-call diagnostic PNG here: an earlier version wrote one with
+  # terra's raw default color scale, which -- being on a totally different
+  # scale than the credible-region-classified maps in script 03 -- caused
+  # real confusion comparing the two. scripts/03_make_maps.R's
+  # individuals_body.png/individuals_flight.png are the figures to use.)
   indiv_layers[[outname]] <- combo
   indiv_meta[[outname]] <- data.frame(surface = outname, Envelope_ID = eid, Feather_cat = fcat,
                                        Group = grp, n_feathers = nlyr(sub), combine_method = res$method)
@@ -163,15 +162,31 @@ area_for <- function(qtl_layer) {
 }
 
 # ---- 4. summary table --------------------------------------------------------
+# peak_share: the fraction of a surface's total probability mass held by its
+# single top cell (since each surface is already normalized to sum to 1
+# within the AOI, this is just max(values)). This is a more direct
+# diagnostic than area50_km2 for a specific failure mode found by manual
+# inspection: several individuals' measured d2H falls outside the range of
+# calibrated values achievable anywhere in the sparse habitat-masked
+# domain, so the model has no good match and instead collapses onto
+# whichever single wetland cell is "least bad" -- which, because wetlands
+# are sparse, can be the SAME cell for multiple unrelated birds. That
+# produces a misleadingly tiny, confident-looking credible region that
+# really means "nothing matched well," not "precisely located." A high
+# peak_share (one cell dominating the whole posterior) is the signature of
+# this, and is flagged below regardless of whether the credible area also
+# looks small.
 rows <- list()
 for (nm in names(all_maps)) {
   lyr <- all_maps[[nm]]
-  mx_cell <- which.max(values(lyr, mat = FALSE))
+  v <- values(lyr, mat = FALSE)
+  mx_cell <- which.max(v)
   xy <- xyFromCell(lyr, mx_cell)
   row <- data.frame(
     surface = nm,
     peak_lon = round(xy[1], 3),
     peak_lat = round(xy[2], 3),
+    peak_share = round(max(v, na.rm = TRUE), 4),
     area50_km2 = round(area_for(qtl50[[nm]])),
     area75_km2 = round(area_for(qtl75[[nm]])),
     area90_km2 = round(area_for(qtl90[[nm]]))
@@ -192,7 +207,38 @@ pop_meta <- data.frame(
 full_meta <- rbind(meta_df, pop_meta)
 stats_tbl <- do.call(rbind, rows)
 summary_tbl <- merge(full_meta, stats_tbl, by = "surface")
+
+# ---- 5. precision/quality flags ---------------------------------------------
+# low_precision_flag: a very small credible area on its own. Not
+# necessarily wrong, but worth a second look (see file header note).
+summary_tbl$low_precision_flag <- summary_tbl$area50_km2 < 1000
+
+# single_cell_dominant_flag: one grid cell holds a large share of the
+# entire posterior. This is the more direct signature of the "no good
+# match in the sparse habitat mask" failure mode than area50 alone.
+summary_tbl$single_cell_dominant_flag <- summary_tbl$peak_share > 0.3
+
+# shared_peak_flag: this surface's peak cell is shared with >=1 other
+# surface (excluding population summaries, and excluding a bird's own
+# Body/Flight pair, which have no reason to share a peak) -- independent
+# birds/categories converging on the identical grid cell is exactly what
+# manual inspection found for several "single_cell_dominant" cases: their
+# measured isotope values fall outside what's achievable anywhere in the
+# habitat-masked domain, so unrelated birds all default to the same
+# least-bad available wetland cell.
+indiv_rows <- !grepl("^Population", summary_tbl$surface)
+peak_key <- paste(summary_tbl$peak_lon, summary_tbl$peak_lat)
+dup_key <- peak_key[indiv_rows][duplicated(peak_key[indiv_rows]) | duplicated(peak_key[indiv_rows], fromLast = TRUE)]
+summary_tbl$shared_peak_flag <- indiv_rows & peak_key %in% dup_key
+
 write.csv(summary_tbl, "outputs/tables/assignment_summary.csv", row.names = FALSE)
 
-message("Wrote outputs/tables/assignment_summary.csv (", nrow(summary_tbl), " rows)")
+n_flagged <- sum(summary_tbl$single_cell_dominant_flag | summary_tbl$shared_peak_flag)
+message("Wrote outputs/tables/assignment_summary.csv (", nrow(summary_tbl), " rows, ",
+        n_flagged, " flagged for low match quality)")
+if (n_flagged > 0) {
+  print(summary_tbl[summary_tbl$single_cell_dominant_flag | summary_tbl$shared_peak_flag,
+                     c("surface", "peak_lon", "peak_lat", "peak_share", "area50_km2",
+                       "single_cell_dominant_flag", "shared_peak_flag")])
+}
 message("Done: per-individual, population, and zone-probability summaries complete.")

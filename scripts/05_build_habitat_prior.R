@@ -111,6 +111,24 @@ names(habitat_prior) <- "habitat_suitability"
 mos <- do.call(merge, pieces)
 habitat_prior <- merge(mos, habitat_prior)  # fills any gaps outside tile coverage with 0
 
+# ---- 3b. smooth to remove hard mask edges -----------------------------------
+# Without this, the mask is a sparse patchwork of isolated wetland cells
+# surrounded by hard zeros. Manual inspection after the first version of
+# this prior found that many DIFFERENT birds' independent posteriors were
+# landing on the exact same single grid cell despite having different
+# measured isotope values -- because whenever a bird's true value wasn't
+# achievable at any wetland cell (common, since wetlands are such a small
+# fraction of the domain), pdRaster would default to whichever isolated
+# wetland cell was the "least bad" available match, and unrelated birds
+# with different-but-similarly-off-target values were all funneled onto
+# the same isolated cell. A Gaussian-smoothed version (sigma ~2 grid
+# cells, ~18 km) gives cells near a wetland partial credit instead of a
+# hard cliff to zero, so nearby non-wetland cells with a better isotopic
+# match can compete instead of the whole posterior collapsing onto one
+# isolated pixel.
+gauss_w <- focalMat(habitat_prior, 0.15, type = "Gauss")
+habitat_prior <- focal(habitat_prior, w = gauss_w, fun = "sum", na.rm = TRUE)
+
 # Force an exact grid + CRS match to the isoscape template: repeated
 # merge()/resample() through this pipeline leaves tiny (~1e-4 degree)
 # floating point drift in the extent, and terra's CRS WKT for d2h_GS.tif
