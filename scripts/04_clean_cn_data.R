@@ -2,6 +2,18 @@
 # Clean the SIBS carbon/nitrogen isotope results (separate lab, separate run
 # from the SIRFER H/O data) and cross-reference against the H/O feather
 # records by envelope ID + feather type.
+#
+# NOTE ON RUN ORDER: this script's first two outputs (cn_clean.csv,
+# cn_summary_by_individual.csv, and the raw-d2H/d18O version of
+# isotopes_combined_summary.csv) only need data/klma_clean.csv (from
+# 00_clean_data.R). But the full C/N-vs-geographic-assignment comparison
+# at the end of this script (cn_vs_geography_comparison.csv) needs
+# outputs/tables/assignment_summary.csv, which doesn't exist until
+# 02_summarize_assignment.R has run. So although this file is numbered
+# "04", run it LAST in the full pipeline: 00 -> 05 -> 01 -> 02 -> 03 -> 04.
+# If assignment_summary.csv isn't present yet, the last block is skipped
+# with a message rather than erroring, so this script still works standalone
+# right after 00 for early exploration of the C/N data on its own.
 
 suppressMessages({
   library(dplyr)
@@ -63,3 +75,38 @@ print(as.data.frame(combined))
 
 message("\nIndividuals in C/N data with NO matching H/O record for that feather category:")
 print(combined %>% filter(is.na(d2H_mean)) %>% select(Envelope_ID, Feather_cat, n))
+
+# ---- cross-reference against the geographic assignment (script 02 output) --
+# Requires outputs/tables/assignment_summary.csv, which only exists after
+# 02_summarize_assignment.R has run (see run-order note at top of file).
+# This is the table used to sanity-check the H/O-based spatial assignment
+# against the independent C/N diet/habitat signal: e.g. a bird assigned
+# high P_Mainland_W_Mexico/P_Baja_CA probability should plausibly show a
+# more C4/marine-enriched d13C and/or higher d15N than a bird assigned to
+# the Pacific Northwest, if the geographic assignment is picking up a real
+# signal rather than isoscape noise.
+assign_path <- "outputs/tables/assignment_summary.csv"
+if (file.exists(assign_path)) {
+  assign_tbl <- read.csv(assign_path, stringsAsFactors = FALSE)
+
+  cn_vs_geo <- cn_summary %>%
+    inner_join(assign_tbl, by = c("Envelope_ID", "Feather_cat")) %>%
+    transmute(
+      Envelope_ID, Group = Group.x, Feather_cat,
+      d13C_mean, d13C_sd, d15N_mean, d15N_sd,
+      P_Mexico_total = round(P_Baja_CA + P_Mainland_W_Mexico, 4),
+      P_PacificNW = round(P_Oregon + P_Washington_Idaho_Utah + P_California, 4),
+      P_within_100km_Klamath,
+      peak_lon, peak_lat, area50_km2, peak_share,
+      single_cell_dominant_flag, shared_peak_flag
+    )
+
+  write.csv(cn_vs_geo, "data/cn_vs_geography_comparison.csv", row.names = FALSE)
+  message("\nWrote data/cn_vs_geography_comparison.csv: ", nrow(cn_vs_geo),
+          " C/N samples matched to a geographic assignment record")
+  print(cn_vs_geo)
+} else {
+  message("\n", assign_path, " not found -- skipping C/N-vs-geography comparison.",
+          " Run 01_run_assignment.R and 02_summarize_assignment.R first, then ",
+          "re-run this script to produce data/cn_vs_geography_comparison.csv.")
+}
