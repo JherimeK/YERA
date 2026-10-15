@@ -6,6 +6,16 @@ It's meant to be read alongside the R code in `scripts/`, so a second reviewer
 can follow (and re-run) exactly what was done. For the short publication-style
 version, see `MANUSCRIPT_METHODS.md`.
 
+**Reproducibility check:** the full pipeline (steps 1–6 below) was rerun
+end to end from the raw data as a final check. Every output file — all
+rasters, tables, and derived CSVs — came back byte-for-byte identical to
+the version already in the repository, confirming the pipeline is fully
+deterministic given the same input files. That same rerun is also what
+surfaced the δ2H/δ18O collinearity issue described in Step 3 and Known
+limitations item 2 below — worth reading carefully, since it affects how
+confidently one of the two headline results (the body-feather Mexico
+result, not the flight-feather Pacific-Northwest one) can be stated.
+
 ## The R files, and the order to run them in
 
 The scripts are numbered `00`-`05`, but the numbering is *not* the run order
@@ -161,6 +171,23 @@ pixel in the study area.
   ecologically closer to a marsh-dwelling rail than a generic passerine) is
   also run and saved (R² = 0.55, similar slope, different intercept) but not
   used in the main results.
+- **A more consequential issue, found by actually rerunning the pipeline
+  and reading its warnings carefully rather than just its final output:**
+  `assignR::pdRaster()` itself warns when two isoscapes are highly
+  correlated ("shared variance > 0.7... specificity of assignments may be
+  inflated"), and that warning fires here — the raw δ2H and δ18O
+  growing-season isoscapes are r² = 0.99 correlated across this study
+  area (both trace the same precipitation fractionation process), so
+  `pdRaster`'s treatment of them as independent evidence isn't well
+  justified statistically. Quantified directly: rerunning the whole
+  assignment with δ2H alone flips the population **body**-feather result
+  from Mexico-majority (58%) to Pacific-Northwest-majority (60%), while
+  the **flight**-feather result is unaffected (actually gets stronger, 86%
+  → 98% Pacific Northwest). See `REPORT.md`'s "Results, section 1b" for
+  the full breakdown, including per-individual numbers. This means the
+  body-vs-flight *contrast* itself is robust, but the specific claim
+  "body feathers show a Mexico-wintering majority" is not, and should be
+  treated as suggestive rather than confirmed.
 - **Habitat prior integration — and a real `assignR` bug found and worked
   around.** The habitat suitability raster from Step 2 is supplied to
   `assignR::pdRaster()` as a multiplicative prior, so the final posterior at
@@ -342,8 +369,15 @@ combined mathematically with it.
 1. No Rallidae calibration data exist in any standard known-origin isotope
    database — the Passerine-based calibration is the best available proxy,
    not a validated one for rails.
-2. The δ18O calibration is weak (R² = 0.08); δ2H is carrying most of the
-   discriminating power.
+2. The δ18O calibration is weak (R² = 0.08) **and** nearly collinear with
+   δ2H (r² = 0.99 in the raw isoscape) — `pdRaster()` itself warns about
+   exactly this condition. Demonstrated impact: dropping δ18O and
+   reassigning with δ2H alone flips the population body-feather result
+   from Mexico-majority to Pacific-Northwest-majority (the flight-feather
+   result is unaffected). See Step 3 above and `REPORT.md` section 1b.
+   Treat the body-feather Mexico-wintering claim as suggestive, not
+   confirmed, pending a fix (e.g. an isoscape SE product that models the
+   δ2H/δ18O covariance instead of treating them as independent).
 3. Isoscape prediction uncertainty was assumed (uniform 5‰/0.6‰), not
    obtained from the official spatially varying SE grids.
 4. The habitat prior is approximate: a single year of 10 m land cover, a

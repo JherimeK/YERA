@@ -38,14 +38,28 @@ Rallidae, and essentially no North American non-passerine, known-origin
 values were calibrated against precipitation isoscape values using the
 package's built-in North America-masked Passerine reference group (n = 699
 known-origin sites for δ2H) as the best available proxy calibration (δ2H:
-R² = 0.76; δ18O: R² = 0.08). The weak δ18O calibration means δ2H contributed
-the majority of the geographic discriminating power in the resulting
-assignments. A sensitivity calibration using a Water bird reference group
-(δ2H only) produced a qualitatively similar result (R² = 0.55). Isoscape
-prediction uncertainty was not available for the region at the time of
-analysis and was approximated as spatially uniform (5‰ for δ2H, 0.6‰ for
-δ18O); we recommend this be revisited with region-specific prediction
-standard errors before final publication (see Discussion/Limitations).
+R² = 0.76; δ18O: R² = 0.08). A sensitivity calibration using a Water bird
+reference group (δ2H only) produced a qualitatively similar result for δ2H
+(R² = 0.55). Isoscape prediction uncertainty was not available for the
+region at the time of analysis and was approximated as spatially uniform
+(5‰ for δ2H, 0.6‰ for δ18O); we recommend this be revisited with
+region-specific prediction standard errors before final publication (see
+Discussion/Limitations).
+
+Despite its weak calibration fit, δ18O is not statistically independent of
+δ2H in this study area: the two raw growing-season isoscapes are
+correlated at r² = 0.99 (both trace the same precipitation fractionation
+process along the meteoric water line), a condition `assignR::pdRaster()`
+itself flags with a built-in warning that joint dual-isotope assignments
+under such collinearity may have artificially inflated apparent
+specificity. **We therefore ran the full assignment a second time using
+δ2H alone** (identical calibration approach, habitat prior, and study
+area) as a direct sensitivity check on how much the dual-isotope result
+depends on δ18O's contribution. The flight-feather result was unaffected
+by this substitution (if anything strengthened); the body-feather
+population-level result was not — it is reported under both the
+dual-isotope and δ2H-only models in Results, and interpreted accordingly
+in the Discussion (see also Limitations).
 
 The assignment domain covered California, Nevada, Arizona, New Mexico,
 Oregon, Washington, Idaho, and Utah, and extended south through Baja
@@ -159,3 +173,17 @@ details for both labs, R package version numbers, and the exact WorldCover
 DOI all need to be filled in/verified before submission — these are flagged
 in brackets above rather than guessed. Everything else describes methods
 actually implemented in the current pipeline.
+
+**Note for Results/Discussion (not drafted here, but important for
+whoever writes them):** the δ2H/δ18O sensitivity check described above is
+not a minor technical aside — it changes which population-level zone has
+the majority of posterior probability for body feathers (Mexico under the
+dual-isotope model, Pacific Northwest under δ2H alone), while leaving the
+flight-feather result (Pacific Northwest, strengthening under δ2H alone)
+unchanged. We recommend the Results section report both numbers for body
+feathers side by side rather than only the dual-isotope figure, and the
+Discussion/Limitations explicitly flag that the body-feather
+"Mexico-wintering" interpretation is sensitivity-dependent while the
+body-vs-flight contrast itself (the paper's core hypothesis test) is not.
+See `REPORT.md`, Results section 1b, for the full numeric breakdown,
+including per-individual results.
