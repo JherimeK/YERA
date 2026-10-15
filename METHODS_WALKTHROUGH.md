@@ -30,6 +30,17 @@ script `02`'s output. **Run them in this order:**
 | 4 | `scripts/02_summarize_assignment.R` | `data/klma_clean.csv`, `outputs/rasters/pd_per_feather.tif` | `outputs/tables/assignment_summary.csv`, per-individual/population posterior rasters, credible-region rasters |
 | 5 | `scripts/03_make_maps.R` | everything from step 4 | all files in `outputs/maps/`, `outputs/tables/Table1_manuscript.csv` |
 | 6 | `scripts/04_clean_cn_data.R` | `data/klma_clean.csv`, `data/SIBS_CN_230621_Kellerman.csv`, and (for its last step only) `outputs/tables/assignment_summary.csv` | `data/cn_clean.csv`, `data/cn_summary_by_individual.csv`, `data/isotopes_combined_summary.csv`, `data/cn_vs_geography_comparison.csv` |
+| 7 (optional, but recommended) | `scripts/06_sensitivity_check.R` | `outputs/rasters/pd_per_feather.tif`, `data/habitat_prior.tif`, `data/klma_clean.csv` | `outputs/tables/sensitivity_d2Honly_vs_dual.csv` |
+
+Step 7 is not required to produce the main maps/tables — it's a sensitivity
+check added after reviewing the pipeline, which reruns the assignment with
+δ2H alone and compares it against the primary dual-isotope model. It's
+listed as "recommended" rather than "required" because of what it found:
+the body-feather Mexico result is not robust to this substitution (the
+population-level majority zone flips), while the flight-feather result is.
+See `REPORT.md` section 1b and `MANUSCRIPT_RESULTS.md` for the full
+writeup — this isn't optional reading if you're citing the body-feather
+result specifically.
 
 Script `05` only needs to be run once (its output, `data/habitat_prior.tif`,
 is checked into the repo already, so step 2 can be skipped on a re-run unless
@@ -128,7 +139,7 @@ habitat, so that elevation-driven false matches get suppressed.
   Mexico study area itself, the Gaussian kernel's finite radius means
   almost every cell picks up *some* nonzero value, so it isn't a hard
   binary mask there — but the distribution stays heavily skewed toward
-  near-zero (median suitability ~0.002; only about a third of study-area
+  near-zero (median suitability ~0.003; only about a third of study-area
   cells exceed 0.01), so it still meaningfully down-weights most of the
   study area in practice.
 

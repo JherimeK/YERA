@@ -87,7 +87,7 @@ environment) plus `terra`/`sf`.
    narrower study area itself the smoothing kernel's finite radius means
    almost every cell picks up some nonzero value (it's not a hard binary
    mask there), but the distribution stays heavily skewed toward near-zero
-   (median ~0.002; only about a third of study-area cells exceed 0.01).
+   (median ~0.003; only about a third of study-area cells exceed 0.01).
    **This required a workaround for a real bug in assignR itself**:
    `pdRaster.isoStack()` crops the isoscape to `mask` internally but never
    crops `prior` to match, so the elementwise `assign * prior` step
@@ -301,6 +301,10 @@ interpretation for the unrelated feather-inconsistency reason.
   against the H/O-based geographic assignment (zone probabilities, peak
   location, match-quality flags) -- the table behind Results sections 1b
   and 3.
+- `outputs/tables/sensitivity_d2Honly_vs_dual.csv` (from
+  `scripts/06_sensitivity_check.R`) -- the d2H-only vs. dual-isotope
+  comparison behind Results section 1b, for every individual and
+  population surface.
 - `outputs/rasters/*.tif` -- full posterior surfaces, for further GIS work.
 - `data/habitat_prior.tif` -- the habitat suitability layer, for reuse.
 

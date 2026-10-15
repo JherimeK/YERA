@@ -54,12 +54,13 @@ itself flags with a built-in warning that joint dual-isotope assignments
 under such collinearity may have artificially inflated apparent
 specificity. **We therefore ran the full assignment a second time using
 δ2H alone** (identical calibration approach, habitat prior, and study
-area) as a direct sensitivity check on how much the dual-isotope result
-depends on δ18O's contribution. The flight-feather result was unaffected
-by this substitution (if anything strengthened); the body-feather
-population-level result was not — it is reported under both the
-dual-isotope and δ2H-only models in Results, and interpreted accordingly
-in the Discussion (see also Limitations).
+area; `scripts/06_sensitivity_check.R`) as a direct sensitivity check on
+how much the dual-isotope result depends on δ18O's contribution. The
+flight-feather result was unaffected by this substitution (if anything
+strengthened); the body-feather population-level result was not — it is
+reported under both the dual-isotope and δ2H-only models in Results
+(Table T2 / `outputs/tables/sensitivity_d2Honly_vs_dual.csv`), and
+interpreted accordingly in the Discussion (see also Limitations).
 
 The assignment domain covered California, Nevada, Arizona, New Mexico,
 Oregon, Washington, Idaho, and Utah, and extended south through Baja
