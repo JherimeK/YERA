@@ -23,12 +23,13 @@ help narrow down and cross-check where that is?
   envelope-ID numbering) cross-referenced against `data/SIBS_CN_QC_230621_Kellerman.csv`.
 - Cleaned/merged tables: `data/klma_clean.csv` (`scripts/00_clean_data.R`),
   `data/cn_clean.csv` / `data/isotopes_combined_summary.csv` (`scripts/04_clean_cn_data.R`).
-- Four samples were QC-flagged during cleaning: two Nape samples from bird
-  1422-02212 (implausibly high Wt% H/O, possible double-loading), one
-  Rectrix from 1422-02220 (O:H combustion ratio 8.5, far outside the normal
-  3.6-4.5 range), and a consistent ~+2 permil enrichment bias on the C/N
-  lab's own QC standards for d13C specifically (both QA standards read ~2
-  permil less negative than their known consensus value).
+- Three H/O samples were QC-flagged during cleaning: a Nape sample from bird
+  1422-02212 and a Nape sample from bird 1422-02214 (both implausibly high
+  Wt% H/O, possible double-loading), and one Rectrix from 1422-02220 (O:H
+  combustion ratio 8.5, far outside the normal 3.6-4.5 range). Separately,
+  the C/N lab's own QC standards showed a consistent ~+2 permil enrichment
+  bias for d13C specifically (both QA standards read ~2 permil less
+  negative than their known consensus value).
 - Growing-season precipitation isoscapes `d2h_GS.tif` / `d18o_GS.tif` (mean
   surfaces only, no prediction-SE grid -- see Limitations).
 - `data/habitat_prior.tif`: wetland/wet-cropland habitat suitability, built
@@ -70,8 +71,13 @@ environment) plus `terra`/`sf`.
    weight, permanent water = 0.1 for marsh-edge effects, everything else =
    0), aggregated to the isoscape's ~9 km grid, and supplied to
    `assignR::pdRaster()` as a multiplicative `prior`. 85 of 108 candidate
-   10m tiles across the study area had land data; ~5.8% of the full domain
-   and ~58% of the study-area cells have nonzero suitability.
+   10m tiles across the study area had land data; after Gaussian smoothing,
+   101,813 of 1,209,600 cells (~8.4%) across the full North American grid
+   are nonzero -- most of the continent stays exactly zero. Within the
+   narrower study area itself the smoothing kernel's finite radius means
+   almost every cell picks up some nonzero value (it's not a hard binary
+   mask there), but the distribution stays heavily skewed toward near-zero
+   (median ~0.002; only about a third of study-area cells exceed 0.01).
    **This required a workaround for a real bug in assignR itself**:
    `pdRaster.isoStack()` crops the isoscape to `mask` internally but never
    crops `prior` to match, so the elementwise `assign * prior` step
@@ -80,10 +86,10 @@ environment) plus `terra`/`sf`.
    was to pre-crop/mask both the isoscape and the prior to the study area
    ourselves and pass `mask = NULL` to `pdRaster()`.
    Sanity check: Mt. Whitney (4,421 m alpine peak, no habitat) samples at
-   ~4x10^-14 probability in the population-body surface; Sacramento
+   ~8.5x10^-15 probability in the population-body surface; Sacramento
    National Wildlife Refuge (a real Central Valley wetland complex) samples
-   at ~1.4x10^-3 -- a >10,000x difference, confirming the prior is doing
-   its job.
+   at ~6.2x10^-4 -- more than ten orders of magnitude apart, confirming the
+   prior is doing its job.
 5. **Assignment.** `assignR::pdRaster()` (dual d2H+d18O joint-normal
    likelihood x habitat prior) on all 53 feather samples (46 KLMA + 7 from
    the reference bird), normalized to the study area.
@@ -137,11 +143,13 @@ single bird's area as a precise result.**
 - **Flight feathers** remain concentrated in the Pacific Northwest
   interior/coast, consistent with the complete prebasic molt of remiges
   happening primarily on/near breeding habitat.
-- The same three birds flagged before (1422-02212, whose Nape sample was
-  QC-flagged; 1422-02219 and 1422-02251, whose feathers are isotopically
-  inconsistent with each other) remain outliers under the habitat-masked
+- The same birds flagged before remain outliers under the habitat-masked
   model too -- the QC/consistency flags and the geographic outlier status
-  still line up.
+  still line up. This now includes a fourth case found on review:
+  1422-02212's own flight feathers are isotopically inconsistent with each
+  other (`combine_method = inconsistent_feathers_mean_fallback`), plausibly
+  linked to its QC-flagged Nape sample above, in addition to 1422-02219's
+  body feathers and 1422-02251's flight feathers.
 
 ### 2. Reference bird 1272-31742: a clean, confident result
 This bird (not part of the KLMA population, included for comparison) has
@@ -261,10 +269,11 @@ dependent on one argmax pixel).
 6. **C/N isotopes are a qualitative cross-check, not folded into the
    spatial model** -- there's no established fine-resolution continental
    d13C/d15N isoscape the way there is for d2H/d18O.
-7. **Sample size** is small (12 KLMA individuals + 1 reference) and several
-   feathers per bird were pooled under a shared-origin assumption that
-   failed outright for 3 of 13 birds (including the reference bird's
-   flight feathers).
+7. **Sample size** is small (12 KLMA individuals + 2 reference birds) and
+   several feathers per bird were pooled under a shared-origin assumption
+   that failed outright for 4 of the 14 birds with more than one feather in
+   some category (1422-02212, 1422-02219, and 1422-02251 among the KLMA
+   birds, plus the reference bird 1272-31742's flight feathers).
 
 ## Suggested next steps
 - Obtain the official prediction-SE isoscape grids from waterisotopes.org
@@ -303,8 +312,20 @@ dependent on one argmax pixel).
   that was never a real deliverable; `individuals_body.png`/
   `individuals_flight.png` (one panel per bird, feathers already
   combined) are the per-bird figures to use.
-- Correction 4 (this version): found and partially mitigated the
-  single-cell convergence issue described in "Match quality" above --
-  Gaussian-smoothed the habitat prior and added `peak_share`,
-  `low_precision_flag`, `single_cell_dominant_flag`, and
-  `shared_peak_flag` columns to the summary table.
+- Correction 4: found and partially mitigated the single-cell convergence
+  issue described in "Match quality" above -- Gaussian-smoothed the habitat
+  prior and added `peak_share`, `low_precision_flag`,
+  `single_cell_dominant_flag`, and `shared_peak_flag` columns to the
+  summary table.
+- Correction 5 (this version): a line-by-line check of this report against
+  the actual data found several numbers had drifted out of sync with the
+  current pipeline output (mostly stale from before the habitat-prior
+  smoothing step was added). Fixed: the QC-flagged-sample count and
+  description (it's one Nape sample each from 1422-02212 and 1422-02214,
+  not two from 1422-02212); the isotopically-inconsistent-feather count
+  (4 cases, not 3 -- 1422-02212's flight feathers were missing from the
+  original list); the habitat-prior nonzero-cell percentages (the old
+  "~5.8%/~58%" figures were stale pre-smoothing numbers); and the Mt.
+  Whitney/Sacramento NWR sanity-check values (updated to the current
+  raster's actual values, which if anything show an even larger
+  mountain-vs-wetland contrast than originally reported).

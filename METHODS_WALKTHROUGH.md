@@ -34,6 +34,14 @@ against the geographic assignment, checks whether
 message and skips that one output if it doesn't. So running `04` twice
 (once early, once at the end) is harmless and even expected.
 
+`scripts/full_pipeline_combined.R` is also available: it's all six scripts
+above concatenated verbatim into one file, already in this exact run order,
+for sharing or reviewing the whole pipeline top to bottom in one place. It
+is not a different implementation — it was built by directly concatenating
+the six files below (verified line-for-line to match), so it's reproduced
+here purely as a convenience; the six numbered scripts remain the source of
+truth for running or editing any one step on its own.
+
 ## Step-by-step: what each script actually does
 
 ### Step 1 — `00_clean_data.R`: build the master feather-sample table
@@ -60,9 +68,12 @@ message and skips that one output if it doesn't. So running `04` twice
   shown for comparison (the same treatment given to the existing "San Diego"
   reference bird already in the KLMA file).
 - Flags (but does not drop) samples with an implausible O:H combustion ratio
-  (outside ~3.0–5.5) or implausible %H/%O (possible double-loading). Four
-  samples were flagged this way: two Nape samples from bird `1422-02212`,
-  one Rectrix from `1422-02220`.
+  (outside ~3.0–5.5) or implausible %H/%O (possible double-loading). Three
+  samples were flagged this way: a Nape sample from bird `1422-02212`
+  (WtH/WtO 11.4/39.2) and a Nape sample from bird `1422-02214` (11.6/44.9),
+  both flagged for implausibly high %H/%O (possible double-loading); and a
+  Rectrix from `1422-02220` (O:H ratio 8.5, far outside the normal ~3.6–4.5
+  range).
 - Writes `data/klma_clean.csv`: one row per feather sample, every bird
   (KLMA + both reference birds) in one table.
 
@@ -101,9 +112,15 @@ habitat, so that elevation-driven false matches get suppressed.
   `resample(..., method="near")`) to the isoscape template, to avoid a subtle
   floating-point/CRS-string mismatch that otherwise breaks a downstream
   `assignR` sanity check (see Step 3).
-- Writes `data/habitat_prior.tif`. About 5.8% of the full raster domain (and
-  ~58% of the narrower study-area cells) end up with nonzero suitability
-  after smoothing.
+- Writes `data/habitat_prior.tif`. Of the 1,209,600 cells across the full
+  North American grid, 101,813 (~8.4%) are nonzero after smoothing — most
+  of the continent stays exactly zero. Within the narrower 8-state-plus-
+  Mexico study area itself, the Gaussian kernel's finite radius means
+  almost every cell picks up *some* nonzero value, so it isn't a hard
+  binary mask there — but the distribution stays heavily skewed toward
+  near-zero (median suitability ~0.002; only about a third of study-area
+  cells exceed 0.01), so it still meaningfully down-weights most of the
+  study area in practice.
 
 ### Step 3 — `01_run_assignment.R`: the core isotope assignment
 
@@ -161,13 +178,15 @@ pixel in the study area.
   gets cropped a second time inside the function.
 - **Sanity check performed:** in the resulting population body-feather
   surface, Mt. Whitney (a 4,421 m alpine peak with zero rail habitat) samples
-  at a posterior probability of ~4×10⁻¹⁴, while Sacramento National Wildlife
-  Refuge (a real Central Valley wetland complex) samples at ~1.4×10⁻³ — a
-  >10,000-fold difference, confirming the habitat prior is meaningfully
-  reshaping the result rather than being a no-op.
-- Runs `pdRaster()` once per feather sample (53 total: 46 KLMA feathers + 7
-  from the two reference birds), producing one posterior-probability raster
-  per feather. Writes the full stack to
+  at a posterior probability of ~8.5×10⁻¹⁵, while Sacramento National
+  Wildlife Refuge (a real Central Valley wetland complex) samples at
+  ~6.2×10⁻⁴ — more than ten orders of magnitude apart, confirming the
+  habitat prior is meaningfully reshaping the result rather than being a
+  no-op.
+- Runs `pdRaster()` once per feather sample (53 total: 43 from the 12
+  KLMA-banded individuals, 3 from the "San Diego" reference bird, and 7
+  from the `1272-31742` reference bird), producing one posterior-probability
+  raster per feather. Writes the full stack to
   `outputs/rasters/pd_per_feather.tif`.
 
 ### Step 4 — `02_summarize_assignment.R`: combine feathers, summarize, flag
@@ -182,9 +201,11 @@ pixel in the study area.
   other), the script falls back to the simple mean of the two feathers'
   posteriors instead, and records `combine_method =
   "inconsistent_feathers_mean_fallback"` in the output table so this can be
-  reviewed rather than silently masked. This triggered for 3 of the
-  multi-feather cases (bird `1422-02219`, bird `1422-02251`, and the
-  reference bird `1272-31742`'s flight feathers).
+  reviewed rather than silently masked. This triggered for 4 of the
+  multi-feather cases: bird `1422-02212`'s flight feathers (plausibly linked
+  to its QC-flagged Nape sample from Step 1), bird `1422-02219`'s body
+  feathers, bird `1422-02251`'s flight feathers, and the reference bird
+  `1272-31742`'s flight feathers.
 - **Population summaries.** For KLMA birds only (both reference birds
   excluded), an unweighted mean posterior is computed separately for Body and
   Flight categories, each renormalized to sum to 1 over the study area.
@@ -334,7 +355,9 @@ combined mathematically with it.
    the *previous* molt cycle wherever that bird was at the time.
 6. Small sample size (12 KLMA individuals + 2 reference birds), and the
    shared-molt-origin assumption for combining same-category feathers failed
-   outright for 3 of 13 birds.
+   outright for 4 of the 14 birds that had more than one feather in some
+   category (1422-02212, 1422-02219, 1422-02251, and the reference bird
+   1272-31742's flight feathers).
 7. As detailed above, roughly half of individual-level results carry a
    match-quality flag and should not be cited as precise on their own —
    population-level zone probabilities are the more robust result.
