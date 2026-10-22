@@ -1,6 +1,12 @@
 # 03_make_maps.R
 # Final presentation maps: population-level Body vs Flight comparison, and a
-# faceted grid of all individual-category posteriors.
+# faceted grid of all individual-category posteriors. These maps now show
+# the primary model (d2H only, Passerine calibration, current habitat
+# prior, KLMA individuals only -- see scripts/01_run_assignment.R for why
+# d18O was dropped from the primary model and the two non-KLMA individuals
+# were removed entirely). Dual-isotope and habitat-prior-strength
+# sensitivity comparisons are in scripts/06_sensitivity_check.R, not shown
+# as maps here.
 #
 # Colors are classified directly by credible region (50% / 50-75% / 75-90% /
 # outside 90%, from script 02's thresholdType = "prob" rasters), not by
@@ -67,8 +73,8 @@ plot_one <- function(qname, main) {
 
 png("outputs/maps/population_body_vs_flight.png", width = 1800, height = 950, res = 130)
 par(mfrow = c(1, 2))
-plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean origin probability)")
-plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability)")
+plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean origin probability, d2H-only primary model)")
+plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability, d2H-only primary model)")
 dev.off()
 
 # ---- individual grids: split into main (clean) figure + supplementary -----
@@ -126,16 +132,16 @@ if (file.exists("data/habitat_prior.tif")) {
 }
 
 # ---- publication-ready summary table ----------------------------------------
-tbl <- qual[order(match(qual$Group, c("KLMA", "KLMA_summary", "Reference_1272-31742",
-                                       "San_Diego_ref")), qual$Envelope_ID, qual$Feather_cat), ]
+# All rows are KLMA individuals -- the two non-KLMA individuals formerly
+# shown here as "reference" birds were removed from the analysis entirely
+# (see scripts/00_clean_data.R), so no Origin_type/reference column is
+# needed any more.
+tbl <- qual[order(match(qual$Group, c("KLMA", "KLMA_summary")), qual$Envelope_ID, qual$Feather_cat), ]
 tbl$Bird <- ifelse(tbl$Group == "KLMA_summary", "All KLMA (population mean)", tbl$Envelope_ID)
-tbl$Origin_type <- ifelse(tbl$Group %in% c("Reference_1272-31742", "San_Diego_ref"),
-                           "Reference (non-KLMA)", "KLMA")
 tbl$Quality_note <- ifelse(tbl$single_cell_dominant_flag | tbl$shared_peak_flag,
                             "Low match quality -- see Methods", "")
 pub_tbl <- data.frame(
   Bird = tbl$Bird,
-  Type = tbl$Origin_type,
   Feathers = tbl$Feather_cat,
   n_feathers = tbl$n_feathers,
   `Peak_lon` = tbl$peak_lon,

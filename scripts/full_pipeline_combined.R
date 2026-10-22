@@ -2,21 +2,30 @@
 #
 # The complete KLMA Yellow Rail geographic-origin pipeline, as a single file,
 # for sharing. This is scripts/00_clean_data.R, 05_build_habitat_prior.R,
-# 01_run_assignment.R, 02_summarize_assignment.R, 03_make_maps.R, and
-# 04_clean_cn_data.R concatenated VERBATIM, in the order they actually need
-# to run (00 -> 05 -> 01 -> 02 -> 03 -> 04 -- NOT numeric file order, since
-# script 04's last step depends on script 02's output; see the run-order
-# note inside its section below). Nothing has been changed from the
-# individual files beyond adding the section banners below and removing
-# each file's own top-of-file comment block in favor of this one, to avoid
-# duplicating the same explanation six times.
+# 01_run_assignment.R, 02_summarize_assignment.R, 03_make_maps.R,
+# 04_clean_cn_data.R, and 06_sensitivity_check.R concatenated VERBATIM, in
+# the order they actually need to run (00 -> 05 -> 01 -> 02 -> 03 -> 04 -> 06
+# -- NOT numeric file order, since script 04's last step depends on script
+# 02's output, and script 06 depends on both 01 and 02; see the run-order
+# note in METHODS_WALKTHROUGH.md). Nothing has been changed from the
+# individual files beyond adding the section banners below, consolidating
+# each file's own library()-loading block into one at the top, and removing
+# a short list of now-redundant duplicate setup calls (sf_use_s2(FALSE),
+# dir.create(), a repeated extent/AOI/calibration object assignment) that
+# are already established earlier in this combined run.
+#
+# PRIMARY MODEL: d2H alone, Passerine calibration, current habitat prior,
+# the 12 KLMA-banded individuals only (43 feathers). Step 7 reruns the
+# assignment under five alternative configurations (dual-isotope, no/weak/
+# strong habitat prior, Water-bird calibration) and compares each against
+# the primary model -- required reading before citing the body-feather
+# result specifically. See REPORT.md Results section 1b.
 #
 # The individual numbered files in scripts/ remain the source of truth for
-# running or modifying any one step on its own (e.g. re-running just the
-# habitat prior, or just the maps, without redoing the full assignment).
-# This combined file is provided purely so the whole pipeline can be
-# reviewed or re-run top to bottom from one place. See
-# METHODS_WALKTHROUGH.md for the full narrative explanation of each step.
+# running or modifying any one step on its own. This combined file is
+# provided purely so the whole pipeline can be reviewed or re-run top to
+# bottom from one place. See METHODS_WALKTHROUGH.md for the full narrative
+# explanation of each step.
 #
 # Run from the repository root (working directory must be the repo root,
 # since every path below is relative to it, e.g. "data/...", "outputs/...").
@@ -30,13 +39,11 @@ suppressMessages({
   library(assignR)
 })
 
+
 # ==============================================================================
 # STEP 1 (scripts/00_clean_data.R)
-# Clean and merge the KLMA Yellow Rail feather isotope results with the
-# SIRFER lab QA/QC file, cross-referenced by the shared "Original ID"
-# (SIRFER sample number). Output is a single tidy CSV used by the
-# assignR pipeline.
 # ==============================================================================
+
 
 klma <- read.csv("data/SIA_Results_KLMA_2026.csv", stringsAsFactors = FALSE)
 qaqc <- read.csv("data/SIA_Results_QAQC.csv", stringsAsFactors = FALSE, header = TRUE)
@@ -176,7 +183,36 @@ if (any(klma$QC_flag != "ok")) {
           select(Original_ID, Envelope_ID, Feather_type_raw, d2H, d18O, WtH, WtO, OHratio, QC_flag))
 }
 
-# ---- 4. Write cleaned dataset -----------------------------------------------
+# ---- 4. Exclude the two non-KLMA individuals from the analysis -------------
+# "San Diego ref bird" and "1272-31742" were originally carried through this
+# pipeline as "reference individuals" for comparison. On review (see
+# REPORT.md change log), that framing doesn't hold up: neither was captured
+# as part of the KLMA sampling effort, their capture/collection dates are
+# unknown relative to the KLMA birds', and -- critically -- we have no
+# independent knowledge of where either one actually bred or molted, so
+# there is nothing for their isotope-based assignment to be "referenced"
+# against. Treating them as reference individuals implied a validation they
+# don't provide. Their raw records are preserved in
+# data/excluded_individuals.csv for transparency, but they are dropped here
+# and do not appear anywhere downstream (assignment, maps, tables, C/N
+# cross-check).
+excluded <- klma %>% filter(Group != "KLMA")
+if (nrow(excluded) > 0) {
+  write.csv(excluded %>%
+              select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
+                     Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
+                     POW_d2H_su, POW_d18O_su, QC_flag),
+            "data/excluded_individuals.csv", row.names = FALSE)
+  message("\nExcluded ", nrow(excluded), " feather samples from ",
+          length(unique(excluded$Envelope_ID)),
+          " non-KLMA individuals (not true reference individuals -- breeding/molt",
+          " origin unknown, different capture context): ",
+          paste(unique(excluded$Envelope_ID), collapse = ", "),
+          ". Preserved in data/excluded_individuals.csv.")
+}
+klma <- klma %>% filter(Group == "KLMA")
+
+# ---- 5. Write cleaned dataset -----------------------------------------------
 out <- klma %>%
   select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
          Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
@@ -184,45 +220,15 @@ out <- klma %>%
 
 write.csv(out, "data/klma_clean.csv", row.names = FALSE)
 message("\nWrote data/klma_clean.csv with ", nrow(out), " feather samples from ",
-        length(unique(out$Envelope_ID)), " individuals.")
+        length(unique(out$Envelope_ID)), " KLMA individuals.")
 message("Individuals: ", paste(unique(out$Envelope_ID), collapse = ", "))
+
 
 
 # ==============================================================================
 # STEP 2 (scripts/05_build_habitat_prior.R)
-# Build a wetland / wet-cropland habitat suitability raster from ESA
-# WorldCover 10m land cover, matching the isoscape grid, for use as a prior
-# in assignR::pdRaster(). This is what excludes the biologically implausible
-# mountain/desert hotspots from the H/O-only maps: those pixels can match
-# the target d2H/d18O values by elevation alone, but Yellow Rails don't
-# occupy that terrain (wet sedge meadow / marsh / wet agriculture only, per
-# Cornell's Birds of the World account).
-#
-# ESA WorldCover classes used (others get weight 0):
-#   90 Herbaceous wetland -> weight 1.0 (primary habitat)
-#   40 Cropland           -> weight 0.3 (Cornell notes "wet agricultural
-#                             areas"; WorldCover doesn't distinguish
-#                             flooded/irrigated cropland from dry cropland,
-#                             so this is a partial-credit weight, not a
-#                             confirmed-habitat weight)
-#   80 Permanent water     -> weight 0.1 (marsh edge effect only; rails
-#                             don't use open water, but wetlands are often
-#                             fringed by/misclassified as water)
-#
-# Each 10m tile (3.24 billion pixels' worth across the full study area) is
-# far too slow/large to reclassify directly in R, so each tile is first
-# decimated to 100m with a fast nearest-neighbor gdalwarp (a few hundred ms
-# per tile, since it's simple block-strided reading, not a full-resolution
-# computation), THEN reclassified and averaged down to the isoscape's
-# ~0.083 degree grid in R. Raw tiles and the 100m intermediate are deleted
-# immediately after each tile is processed to keep disk usage low.
-#
-# NOTE: this step only needs to be run once -- its output, data/habitat_prior.tif,
-# is checked into the repository already. It re-downloads ~85 tiles from
-# esa-worldcover.s3.eu-central-1.amazonaws.com and takes several minutes;
-# skip it on a re-run unless you want to rebuild the habitat layer from
-# scratch (e.g. to use a different year or weighting scheme).
 # ==============================================================================
+
 
 dir.create("data/worldcover_tmp", showWarnings = FALSE)
 
@@ -342,30 +348,11 @@ v <- values(habitat_prior, mat = FALSE)
 message("Nonzero suitability cells: ", sum(v > 0, na.rm = TRUE), " of ", length(v))
 
 
+
 # ==============================================================================
 # STEP 3 (scripts/01_run_assignment.R)
-# assignR-based geographic origin assignment for KLMA Yellow Rail feathers.
-#
-# Calibration: assignR ships no Rallidae (or any non-passerine) known-origin
-# d18O keratin data for North America, so a species-specific calibration is
-# not possible. We use the built-in North-America-masked "Passerine" group
-# (n=699 d2H sites, n=699/187 usable d18O sites) as the best-available proxy
-# calibration -- it is the only NA group in the database with enough paired
-# d2H/d18O known-origin sites to fit a robust regression. This is a real
-# limitation (Rallidae keratin-water fractionation may differ from
-# passerines) and is reported as such. A "Water bird" d2H-only calibration
-# (dabbling/diving waterfowl, ecologically closer to a marsh rail) is run
-# as a sensitivity check.
-#
-# Isoscape uncertainty: the supplied d2h_GS.tif / d18o_GS.tif are mean-only
-# growing-season precipitation isoscapes (no SE band could be downloaded in
-# this environment -- wateriso.utah.edu is not reachable). A spatially
-# uniform isoscape SE is assumed (5 permil H, 0.6 permil O), based on the
-# magnitude of assignR's own example prediction-SE raster. This SE term is
-# minor relative to the tissue-calibration regression variance that
-# calRaster adds in quadrature, so its effect on final maps is small, but
-# it should be replaced with the official SE grid if the user obtains it.
 # ==============================================================================
+
 
 set.seed(42)
 sf_use_s2(FALSE)
@@ -428,6 +415,7 @@ klamath_buf <- st_as_sf(st_buffer(st_sfc(st_point(c(-121.6008333, 42.9766389)), 
 klamath_buf_v <- vect(klamath_buf)
 
 # ---- 2. Isoscapes -----------------------------------------------------------
+na_ext <- ext(-170, -50, 5, 75)
 d2h_mean <- crop(rast("d2h_GS.tif"), na_ext)
 d18o_mean <- crop(rast("d18o_GS.tif"), na_ext)
 d18o_mean <- resample(d18o_mean, d2h_mean, method = "bilinear")
@@ -453,7 +441,8 @@ png("outputs/maps/calibration_regression_d18O.png", width = 900, height = 700)
 cal_O <- calRaster(known_O, d18o_iso, genplot = TRUE, verboseLM = TRUE)
 dev.off()
 
-# sensitivity calibration: Water bird group, d2H only
+# Water bird calibration: d2H only, saved here for script 06's calibration
+# sensitivity check (Passerine vs. Water bird), not used in the primary model.
 known_H_wb <- subOrigData(marker = "d2H", group = "Water bird", mask = naMap,
                            niter = 2000, genplot = FALSE)
 png("outputs/maps/calibration_regression_d2H_waterbird_sensitivity.png", width = 900, height = 700)
@@ -461,13 +450,13 @@ cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = TRUE, verboseLM = TRUE)
 dev.off()
 
 # ---- 3b. Habitat prior (wetland / wet-cropland suitability) ----------------
-# Built in Step 2 above from ESA WorldCover 10m land cover (herbaceous
-# wetland = 1.0, cropland = 0.3, permanent water = 0.1, everything else =
-# 0), on the exact same grid as the isoscape above. This is what keeps the
-# assignment out of mountain/forest/desert terrain that happens to match
-# the target d2H/d18O values by elevation alone but isn't habitat Yellow
-# Rails would ever occupy (wet sedge meadow / marsh / wet agriculture
-# only, per Cornell's Birds of the World account).
+# Built by scripts/05_build_habitat_prior.R from ESA WorldCover 10m land
+# cover (herbaceous wetland = 1.0, cropland = 0.3, permanent water = 0.1,
+# everything else = 0), on the exact same grid as the isoscape above. This
+# is what keeps the assignment out of mountain/forest/desert terrain that
+# happens to match the target d2H/d18O values by elevation alone but isn't
+# habitat Yellow Rails would ever occupy (wet sedge meadow / marsh / wet
+# agriculture only, per Cornell's Birds of the World account).
 #
 # assignR::pdRaster.isoStack() has a real bug when mask and prior are both
 # supplied: it crops the isoscape to mask internally, but never crops prior
@@ -483,52 +472,71 @@ aoi_crop_mask <- function(r) {
 }
 cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)
 cal_O$isoscape.rescale <- aoi_crop_mask(cal_O$isoscape.rescale)
-iso_stack <- isoStack(cal_H, cal_O)
+cal_H_wb$isoscape.rescale <- aoi_crop_mask(cal_H_wb$isoscape.rescale)
 
 habitat_prior <- rast("data/habitat_prior.tif")
-habitat_prior <- resample(aoi_crop_mask(habitat_prior), iso_stack[[1]], method = "near")
-crs(habitat_prior) <- crs(iso_stack[[1]])
+habitat_prior <- resample(aoi_crop_mask(habitat_prior), cal_H$isoscape.rescale, method = "near")
+crs(habitat_prior) <- crs(cal_H$isoscape.rescale)
+
+# "Weak"/"strong" prior-strength variants for script 06's habitat-prior
+# sensitivity check: a power transform preserves the underlying suitability
+# pattern (same relative ranking of cells) while compressing (weak,
+# exponent < 1, closer to a uniform/no-op prior) or exaggerating (strong,
+# exponent > 1, closer to a hard mask) how much it discounts non-habitat.
+habitat_prior_weak <- habitat_prior^0.5
+habitat_prior_strong <- habitat_prior^2
 
 # ---- 4. Load cleaned sample data --------------------------------------------
 samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
 samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original_ID, sep = "__")
 
-unknown_df <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
+unknown_H <- data.frame(ID = samp$sample_id, d2H = samp$d2H)
 
-message("Running per-feather dual-isotope assignment for ", nrow(unknown_df), " samples...")
+message("Running primary per-feather assignment (d2H only, Passerine calibration, ",
+        "current habitat prior) for ", nrow(unknown_H), " samples...")
 # genplot = FALSE: pdRaster's own internal plot is a raw, uncurated
-# byproduct (terra caps it at 16 of our 53 panels, with assignR's default
-# color scheme unrelated to this project's maps) -- not a real deliverable.
-# Step 5 below (scripts/03_make_maps.R) builds the actual per-bird figures.
-pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = NULL, prior = habitat_prior, genplot = FALSE)
-names(pd_feather) <- unknown_df$ID
+# byproduct (terra caps it at 16 panels, with assignR's default color
+# scheme unrelated to this project's maps) -- not a real deliverable.
+# scripts/03_make_maps.R builds the actual per-bird figures.
+pd_feather <- pdRaster(cal_H, unknown = unknown_H, mask = NULL, prior = habitat_prior, genplot = FALSE)
+names(pd_feather) <- unknown_H$ID
 writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
 
-saveRDS(list(cal_H = cal_H, cal_O = cal_O, cal_H_wb = cal_H_wb, aoi = aoi_sf,
-             zones_names = names(zones)),
+# Saved for same-session inspection only (e.g. interactively in RStudio).
+# terra::SpatRaster objects wrap external C++ pointers that do not survive
+# saveRDS()/readRDS() across separate R processes -- they come back with
+# dead pointers and error on first use -- so scripts/06_sensitivity_check.R
+# recomputes these objects itself rather than reading this file (it runs as
+# its own `Rscript` process, like every script in this pipeline).
+saveRDS(list(cal_H = cal_H, cal_O = cal_O, cal_H_wb = cal_H_wb,
+             habitat_prior = habitat_prior,
+             habitat_prior_weak = habitat_prior_weak,
+             habitat_prior_strong = habitat_prior_strong,
+             aoi = aoi_sf, zones_names = names(zones)),
         "outputs/calibration_objects.rds")
 
-message("Step 1-4 (assignment) complete. Saved per-feather posterior stack.")
+message("Step 1-4 complete. Saved primary per-feather posterior stack (d2H-only).")
+
 
 
 # ==============================================================================
 # STEP 4 (scripts/02_summarize_assignment.R)
-# Combine per-feather posteriors into per-individual x feather-category
-# surfaces (assuming feathers of the same category on the same bird share
-# a molt origin), build population-level summary surfaces, compute 50/75/90%
-# credible regions, and tabulate probability mass by geographic zone.
 # ==============================================================================
 
+
+sf_use_s2(FALSE)
+dir.create("outputs/maps", showWarnings = FALSE)
+dir.create("outputs/rasters", showWarnings = FALSE)
 dir.create("outputs/tables", showWarnings = FALSE)
 
 samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
 samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original_ID, sep = "__")
 pd_feather <- rast("outputs/rasters/pd_per_feather.tif")
 
-# ---- rebuild AOI + zones (same logic as Step 3 above) -----------------------
+# ---- rebuild AOI + zones (same logic as script 01) --------------------------
 # AOI extended north to include OR/WA/ID/UT so Klamath Marsh itself (the
 # capture/breeding site, ~43 N, just north of California) remains a
-# candidate origin -- see note in Step 3.
+# candidate origin -- see note in script 01.
 us <- st_as_sf(maps::map("state", regions = c("california", "nevada", "arizona", "new mexico",
                                                "oregon", "washington", "idaho", "utah"),
                           fill = TRUE, plot = FALSE))
@@ -615,9 +623,9 @@ for (i in seq_len(nrow(groups))) {
   names(combo) <- outname
   # (no per-call diagnostic PNG here: an earlier version wrote one with
   # terra's raw default color scale, which -- being on a totally different
-  # scale than the credible-region-classified maps in Step 5 -- caused
-  # real confusion comparing the two. Step 5's individuals_body.png/
-  # individuals_flight.png are the figures to use.)
+  # scale than the credible-region-classified maps in script 03 -- caused
+  # real confusion comparing the two. scripts/03_make_maps.R's
+  # individuals_body.png/individuals_flight.png are the figures to use.)
   indiv_layers[[outname]] <- combo
   indiv_meta[[outname]] <- data.frame(surface = outname, Envelope_ID = eid, Feather_cat = fcat,
                                        Group = grp, n_feathers = nlyr(sub), combine_method = res$method)
@@ -749,22 +757,12 @@ if (n_flagged > 0) {
 message("Done: per-individual, population, and zone-probability summaries complete.")
 
 
+
 # ==============================================================================
 # STEP 5 (scripts/03_make_maps.R)
-# Final presentation maps: population-level Body vs Flight comparison, and a
-# faceted grid of all individual-category posteriors.
-#
-# Colors are classified directly by credible region (50% / 50-75% / 75-90% /
-# outside 90%, from Step 4's thresholdType = "prob" rasters), not by
-# quantile-of-pixel-value. An earlier version used quantile color breaks,
-# which -- because the underlying probability surfaces are extremely
-# right-skewed -- made broad, actually-low-probability areas look "hot" by
-# relative rank even though they hold very little of the true cumulative
-# probability. That made the map's coloring and the credible-region area
-# stats tell visually different stories. Classifying by credible region
-# directly means the colored area on the map IS the credible-region area
-# in the stats table, by construction.
 # ==============================================================================
+
+sf_use_s2(FALSE)
 
 pop <- rast("outputs/rasters/pd_population_by_category.tif")
 indiv <- rast("outputs/rasters/pd_per_individual_category.tif")
@@ -813,8 +811,8 @@ plot_one <- function(qname, main) {
 
 png("outputs/maps/population_body_vs_flight.png", width = 1800, height = 950, res = 130)
 par(mfrow = c(1, 2))
-plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean origin probability)")
-plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability)")
+plot_one("Population_Body", "KLMA Yellow Rail -- Body feathers\n(population mean origin probability, d2H-only primary model)")
+plot_one("Population_Flight", "KLMA Yellow Rail -- Flight feathers\n(population mean origin probability, d2H-only primary model)")
 dev.off()
 
 # ---- individual grids: split into main (clean) figure + supplementary -----
@@ -872,16 +870,16 @@ if (file.exists("data/habitat_prior.tif")) {
 }
 
 # ---- publication-ready summary table ----------------------------------------
-tbl <- qual[order(match(qual$Group, c("KLMA", "KLMA_summary", "Reference_1272-31742",
-                                       "San_Diego_ref")), qual$Envelope_ID, qual$Feather_cat), ]
+# All rows are KLMA individuals -- the two non-KLMA individuals formerly
+# shown here as "reference" birds were removed from the analysis entirely
+# (see scripts/00_clean_data.R), so no Origin_type/reference column is
+# needed any more.
+tbl <- qual[order(match(qual$Group, c("KLMA", "KLMA_summary")), qual$Envelope_ID, qual$Feather_cat), ]
 tbl$Bird <- ifelse(tbl$Group == "KLMA_summary", "All KLMA (population mean)", tbl$Envelope_ID)
-tbl$Origin_type <- ifelse(tbl$Group %in% c("Reference_1272-31742", "San_Diego_ref"),
-                           "Reference (non-KLMA)", "KLMA")
 tbl$Quality_note <- ifelse(tbl$single_cell_dominant_flag | tbl$shared_peak_flag,
                             "Low match quality -- see Methods", "")
 pub_tbl <- data.frame(
   Bird = tbl$Bird,
-  Type = tbl$Origin_type,
   Feathers = tbl$Feather_cat,
   n_feathers = tbl$n_feathers,
   `Peak_lon` = tbl$peak_lon,
@@ -899,23 +897,11 @@ message("Maps written to outputs/maps/")
 message("Publication table written to outputs/tables/Table1_manuscript.csv")
 
 
+
 # ==============================================================================
 # STEP 6 (scripts/04_clean_cn_data.R)
-# Clean the SIBS carbon/nitrogen isotope results (separate lab, separate run
-# from the SIRFER H/O data) and cross-reference against the H/O feather
-# records by envelope ID + feather type, and -- as the final step, now that
-# outputs/tables/assignment_summary.csv exists from Step 4 above -- against
-# the geographic assignment itself.
-#
-# NOTE ON RUN ORDER: this step's first two outputs (cn_clean.csv,
-# cn_summary_by_individual.csv, and the raw-d2H/d18O version of
-# isotopes_combined_summary.csv) only actually need data/klma_clean.csv
-# (from Step 1). It is run here, LAST, only because its final output
-# (cn_vs_geography_comparison.csv) needs assignment_summary.csv, which
-# doesn't exist until Step 4 has run. In the individual numbered scripts
-# this is scripts/04_clean_cn_data.R -- numbered "04" for topic grouping
-# with the other C/N-related code, not for run order.
 # ==============================================================================
+
 
 cn <- read.csv("data/SIBS_CN_230621_Kellerman.csv", stringsAsFactors = FALSE)
 names(cn)[1:7] <- c("SIBS_ID", "Sample_ID_raw", "Feather_code", "d15N", "N_pct", "d13C", "C_pct")
@@ -936,9 +922,20 @@ cn <- cn %>%
       TRUE ~ NA_character_
     ),
     # band-number prefix 1272- does not match the KLMA 1422- prefix pattern
-    # used elsewhere in this study -- flag rather than assume
-    Group = ifelse(str_starts(Envelope_ID, "1422-"), "KLMA", "Non_KLMA_flagged")
+    # used elsewhere in this study
+    Group = ifelse(str_starts(Envelope_ID, "1422-"), "KLMA", "Non_KLMA_excluded")
   )
+
+# Exclude individual 1272-31742, same as scripts/00_clean_data.R: not a
+# true reference individual (unknown breeding/molt origin, different
+# capture context from the KLMA birds), so dropped from the analysis
+# entirely rather than carried through as a comparison point.
+n_excluded <- sum(cn$Group == "Non_KLMA_excluded")
+if (n_excluded > 0) {
+  message("Excluding ", n_excluded, " C/N sample(s) from non-KLMA individual(s): ",
+          paste(unique(cn$Envelope_ID[cn$Group == "Non_KLMA_excluded"]), collapse = ", "))
+}
+cn <- cn %>% filter(Group == "KLMA")
 
 write.csv(cn, "data/cn_clean.csv", row.names = FALSE)
 message("Wrote data/cn_clean.csv: ", nrow(cn), " C/N samples from ",
@@ -973,7 +970,9 @@ print(as.data.frame(combined))
 message("\nIndividuals in C/N data with NO matching H/O record for that feather category:")
 print(combined %>% filter(is.na(d2H_mean)) %>% select(Envelope_ID, Feather_cat, n))
 
-# ---- cross-reference against the geographic assignment (Step 4 output) -----
+# ---- cross-reference against the geographic assignment (script 02 output) --
+# Requires outputs/tables/assignment_summary.csv, which only exists after
+# 02_summarize_assignment.R has run (see run-order note at top of file).
 # This is the table used to sanity-check the H/O-based spatial assignment
 # against the independent C/N diet/habitat signal: e.g. a bird assigned
 # high P_Mainland_W_Mexico/P_Baja_CA probability should plausibly show a
@@ -1001,10 +1000,222 @@ if (file.exists(assign_path)) {
           " C/N samples matched to a geographic assignment record")
   print(cn_vs_geo)
 } else {
-  message("\n", assign_path, " not found -- this should not happen when running the ",
-          "full combined pipeline in order, since Step 4 above writes it.")
+  message("\n", assign_path, " not found -- skipping C/N-vs-geography comparison.",
+          " Run 01_run_assignment.R and 02_summarize_assignment.R first, then ",
+          "re-run this script to produce data/cn_vs_geography_comparison.csv.")
 }
 
-message("\n==================================================================")
-message("Full pipeline complete.")
-message("==================================================================")
+
+
+# ==============================================================================
+# STEP 7 (scripts/06_sensitivity_check.R)
+# ==============================================================================
+
+set.seed(42)
+sf_use_s2(FALSE)
+
+# NOTE: this script recomputes calibration/isoscape objects from scratch
+# (mirroring scripts/01_run_assignment.R) rather than reading
+# outputs/calibration_objects.rds. terra::SpatRaster objects wrap external
+# C++ pointers that do not survive saveRDS()/readRDS() across separate R
+# sessions/processes (they come back with dead/NULL pointers and error on
+# first use) -- the .rds file is kept for inspection within a single live
+# R session, but every script that runs as its own `Rscript` process (as
+# all of these do) needs to rebuild its own raster objects.
+samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
+samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original_ID, sep = "__")
+unknown_H  <- data.frame(ID = samp$sample_id, d2H = samp$d2H)
+unknown_HO <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
+
+# ---- rebuild AOI + zones (same logic as scripts 01-02) ---------------------
+us <- st_as_sf(maps::map("state", regions = c("california", "nevada", "arizona", "new mexico",
+                                               "oregon", "washington", "idaho", "utah"),
+                          fill = TRUE, plot = FALSE))
+mx <- st_as_sf(maps::map("world", "Mexico", fill = TRUE, plot = FALSE))
+st_crs(us) <- 4326; st_crs(mx) <- 4326
+us <- st_make_valid(us); mx <- st_make_valid(mx)
+bbox_mx <- st_bbox(c(xmin = -118, xmax = -101, ymin = 14, ymax = 33), crs = 4326)
+mx_clip <- suppressWarnings(st_crop(mx, bbox_mx))
+aoi_sf <- st_as_sf(st_union(st_union(st_geometry(us)), st_union(st_geometry(mx_clip))))
+aoi <- vect(aoi_sf); crs(aoi) <- "EPSG:4326"
+mx_clip_u <- st_union(mx_clip)
+baja_bbox <- st_as_sfc(st_bbox(c(xmin = -118, xmax = -111.5, ymin = 14, ymax = 33), crs = 4326))
+mainland_bbox <- st_as_sfc(st_bbox(c(xmin = -111.5, xmax = -101, ymin = 14, ymax = 33), crs = 4326))
+baja_sf <- st_as_sf(suppressWarnings(st_intersection(mx_clip_u, baja_bbox)))
+mainland_mx_sf <- st_as_sf(suppressWarnings(st_intersection(mx_clip_u, mainland_bbox)))
+mexico_v <- vect(st_as_sf(st_union(st_geometry(baja_sf), st_geometry(mainland_mx_sf))))
+pnw_v <- vect(st_as_sf(us[us$ID %in% c("oregon", "washington", "idaho", "utah", "california"), ]))
+crs(mexico_v) <- "EPSG:4326"; crs(pnw_v) <- "EPSG:4326"
+
+# ---- rebuild isoscapes + calibration (identical to script 01) -------------
+ASSUMED_SD_D2H <- 5.0
+ASSUMED_SD_D18O <- 0.6
+na_ext <- ext(-170, -50, 5, 75)
+d2h_mean <- crop(rast("d2h_GS.tif"), na_ext)
+d18o_mean <- crop(rast("d18o_GS.tif"), na_ext)
+d18o_mean <- resample(d18o_mean, d2h_mean, method = "bilinear")
+d2h_iso <- c(d2h_mean, setValues(d2h_mean, ASSUMED_SD_D2H)); names(d2h_iso) <- c("mean", "sd")
+d18o_iso <- c(d18o_mean, setValues(d18o_mean, ASSUMED_SD_D18O)); names(d18o_iso) <- c("mean", "sd")
+
+data(naMap)
+known_H <- subOrigData(marker = "d2H", group = "Passerine", mask = naMap, niter = 2000, genplot = FALSE)
+known_O <- subOrigData(marker = "d18O", group = "Passerine", ref_scale = "VSMOW_O", mask = naMap, niter = 2000, genplot = FALSE)
+known_H_wb <- subOrigData(marker = "d2H", group = "Water bird", mask = naMap, niter = 2000, genplot = FALSE)
+cal_H <- calRaster(known_H, d2h_iso, genplot = FALSE, verboseLM = FALSE)
+cal_O <- calRaster(known_O, d18o_iso, genplot = FALSE, verboseLM = FALSE)
+cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = FALSE, verboseLM = FALSE)
+
+aoi_crop_mask <- function(r) mask(crop(r, aoi), aoi)
+cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)
+cal_O$isoscape.rescale <- aoi_crop_mask(cal_O$isoscape.rescale)
+cal_H_wb$isoscape.rescale <- aoi_crop_mask(cal_H_wb$isoscape.rescale)
+
+habitat_prior <- rast("data/habitat_prior.tif")
+habitat_prior <- resample(aoi_crop_mask(habitat_prior), cal_H$isoscape.rescale, method = "near")
+crs(habitat_prior) <- crs(cal_H$isoscape.rescale)
+habitat_prior_weak <- habitat_prior^0.5
+habitat_prior_strong <- habitat_prior^2
+
+cal <- list(cal_H = cal_H, cal_O = cal_O, cal_H_wb = cal_H_wb,
+            habitat_prior = habitat_prior, habitat_prior_weak = habitat_prior_weak,
+            habitat_prior_strong = habitat_prior_strong)
+
+mass_in_zone <- function(layer, zonevect) {
+  e <- terra::extract(layer, zonevect, fun = sum, na.rm = TRUE, ID = FALSE)
+  s <- sum(unlist(e), na.rm = TRUE)
+  if (length(s) == 0 || is.na(s)) 0 else s
+}
+combine_feathers <- function(sub) {
+  if (nlyr(sub) == 1) return(sub[[1]])
+  prod <- sub[[1]]
+  for (i in 2:nlyr(sub)) prod <- prod * sub[[i]]
+  s <- global(prod, sum, na.rm = TRUE)[1, 1]
+  if (is.na(s) || s <= 0) {
+    m <- app(sub, fun = mean, na.rm = TRUE)
+    m / global(m, sum, na.rm = TRUE)[1, 1]
+  } else prod / s
+}
+area_km2 <- function(qtl_layer, cellkm2) {
+  vals <- values(qtl_layer, mat = FALSE); ok <- which(vals == 1)
+  sum(values(cellkm2, mat = FALSE)[ok], na.rm = TRUE)
+}
+groups <- samp %>% distinct(Envelope_ID, Feather_cat)
+build_combo <- function(pd_feather) {
+  layers <- list()
+  for (i in seq_len(nrow(groups))) {
+    eid <- groups$Envelope_ID[i]; fcat <- groups$Feather_cat[i]
+    ids <- samp$sample_id[samp$Envelope_ID == eid & samp$Feather_cat == fcat]
+    sub <- pd_feather[[match(ids, names(pd_feather))]]
+    outname <- paste(eid, fcat, sep = "__")
+    combo <- combine_feathers(sub); names(combo) <- outname
+    layers[[outname]] <- combo
+  }
+  rast(layers)
+}
+population_surface <- function(combo_stack, fcat) {
+  sel <- grep(paste0("__", fcat, "$"), names(combo_stack))
+  m <- app(combo_stack[[sel]], fun = mean, na.rm = TRUE)
+  m / global(m, sum, na.rm = TRUE)[1, 1]
+}
+summarize_variant <- function(pd_feather, label) {
+  combo <- build_combo(pd_feather)
+  cellkm2 <- cellSize(combo[[1]], unit = "km")
+  qtl <- qtlRaster(combo, threshold = 0.5, thresholdType = "prob", genplot = FALSE)
+  rows <- lapply(names(combo), function(n) {
+    data.frame(surface = n, variant = label,
+               P_Mexico = round(mass_in_zone(combo[[n]], mexico_v), 4),
+               P_PacNW = round(mass_in_zone(combo[[n]], pnw_v), 4),
+               area50_km2 = round(area_km2(qtl[[n]], cellkm2)))
+  })
+  pop_rows <- lapply(c("Body", "Flight"), function(fcat) {
+    pb <- population_surface(combo, fcat)
+    qp <- qtlRaster(pb, threshold = 0.5, thresholdType = "prob", genplot = FALSE)
+    data.frame(surface = paste0("Population_", fcat), variant = label,
+               P_Mexico = round(mass_in_zone(pb, mexico_v), 4),
+               P_PacNW = round(mass_in_zone(pb, pnw_v), 4),
+               area50_km2 = round(area_km2(qp, cellkm2)))
+  })
+  rbind(do.call(rbind, rows), do.call(rbind, pop_rows))
+}
+
+all_rows <- list()
+
+# ---- PRIMARY (reuse scripts/01-02 output; no rerun needed) ----------------
+message("Summarizing PRIMARY model (d2H only, Passerine, current prior) from existing output...")
+primary_tbl <- read.csv("outputs/tables/assignment_summary.csv", stringsAsFactors = FALSE)
+primary_tbl$P_Mexico <- primary_tbl$P_Baja_CA + primary_tbl$P_Mainland_W_Mexico
+primary_tbl$P_PacNW <- primary_tbl$P_Oregon + primary_tbl$P_Washington_Idaho_Utah + primary_tbl$P_California
+all_rows$primary <- data.frame(surface = primary_tbl$surface, variant = "primary_d2H_passerine_currentprior",
+                                P_Mexico = round(primary_tbl$P_Mexico, 4), P_PacNW = round(primary_tbl$P_PacNW, 4),
+                                area50_km2 = primary_tbl$area50_km2)
+
+# ---- A. dual-isotope (current prior) ---------------------------------------
+message("A. Running dual-isotope (d2H+d18O) sensitivity variant...")
+iso_stack <- isoStack(cal$cal_H, cal$cal_O)
+pd_dual <- pdRaster(iso_stack, unknown = unknown_HO, mask = NULL, prior = cal$habitat_prior, genplot = FALSE)
+names(pd_dual) <- unknown_HO$ID
+all_rows$dual <- summarize_variant(pd_dual, "dual_isotope")
+
+# ---- B. no habitat prior (d2H only) ----------------------------------------
+message("B. Running no-habitat-prior sensitivity variant...")
+pd_noprior <- pdRaster(cal$cal_H, unknown = unknown_H, mask = NULL, prior = NULL, genplot = FALSE)
+names(pd_noprior) <- unknown_H$ID
+all_rows$noprior <- summarize_variant(pd_noprior, "no_prior")
+
+# ---- C. weak habitat prior (d2H only, prior^0.5) ---------------------------
+message("C. Running weak-habitat-prior sensitivity variant...")
+pd_weak <- pdRaster(cal$cal_H, unknown = unknown_H, mask = NULL, prior = cal$habitat_prior_weak, genplot = FALSE)
+names(pd_weak) <- unknown_H$ID
+all_rows$weak <- summarize_variant(pd_weak, "weak_prior")
+
+# ---- D. strong habitat prior (d2H only, prior^2) ---------------------------
+message("D. Running strong-habitat-prior sensitivity variant...")
+pd_strong <- pdRaster(cal$cal_H, unknown = unknown_H, mask = NULL, prior = cal$habitat_prior_strong, genplot = FALSE)
+names(pd_strong) <- unknown_H$ID
+all_rows$strong <- summarize_variant(pd_strong, "strong_prior")
+
+# ---- E. Water bird calibration (d2H only, current prior) -------------------
+message("E. Running Water bird calibration sensitivity variant...")
+pd_wb <- pdRaster(cal$cal_H_wb, unknown = unknown_H, mask = NULL, prior = cal$habitat_prior, genplot = FALSE)
+names(pd_wb) <- unknown_H$ID
+all_rows$waterbird <- summarize_variant(pd_wb, "waterbird_calibration")
+
+# ---- combine into one wide comparison table --------------------------------
+long <- do.call(rbind, all_rows)
+wide <- reshape(long, idvar = "surface", timevar = "variant",
+                 v.names = c("P_Mexico", "P_PacNW", "area50_km2"), direction = "wide")
+wide <- wide[order(wide$surface), ]
+dir.create("outputs/tables", showWarnings = FALSE)
+write.csv(wide, "outputs/tables/sensitivity_comparison.csv", row.names = FALSE)
+message("\nWrote outputs/tables/sensitivity_comparison.csv (", nrow(wide), " rows x ", length(all_rows), " model variants)")
+
+pop_wide <- wide[grepl("^Population", wide$surface), ]
+print(pop_wide, row.names = FALSE)
+
+# ---- Major Issue 4: habitat prior's own distribution across zones ---------
+# Independent of any isotope data: how much of the habitat suitability
+# prior's mass (and nonzero area) falls in each zone? If Mexico habitat is
+# systematically under-represented relative to the US side (e.g. because
+# ESA WorldCover classifies ephemeral/seasonal Mexican wetlands less
+# completely than US wetlands), that alone -- with no isotope signal
+# needed -- would bias assignments northward, and vice versa.
+message("\nComputing habitat-prior distribution by zone...")
+hp <- cal$habitat_prior
+zone_list <- list(Mexico = mexico_v, Pacific_NW = pnw_v)
+cell_km2_hp <- cellSize(hp, unit = "km")
+hp_zone_rows <- lapply(names(zone_list), function(zn) {
+  zv <- zone_list[[zn]]
+  mass <- mass_in_zone(hp, zv)
+  total_mass <- global(hp, sum, na.rm = TRUE)[1, 1]
+  area_cells <- terra::extract(hp > 0.01, zv, fun = sum, na.rm = TRUE, ID = FALSE)
+  area_km2_suitable <- sum(unlist(area_cells), na.rm = TRUE) *
+    mean(values(cell_km2_hp, mat = FALSE), na.rm = TRUE)
+  data.frame(zone = zn, pct_of_total_habitat_mass = round(100 * mass / total_mass, 2),
+             suitable_area_km2_gt_0.01 = round(area_km2_suitable))
+})
+hp_zone_tbl <- do.call(rbind, hp_zone_rows)
+write.csv(hp_zone_tbl, "outputs/tables/habitat_prior_by_zone.csv", row.names = FALSE)
+print(hp_zone_tbl, row.names = FALSE)
+message("Wrote outputs/tables/habitat_prior_by_zone.csv")
+
+

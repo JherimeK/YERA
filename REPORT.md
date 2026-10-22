@@ -1,475 +1,441 @@
 # Geographic origin of KLMA Yellow Rail feathers: stable isotope assignment
 
 ## Question
-Do body feathers and flight feathers from Yellow Rails (*Coturnicops noveboracensis*)
-captured at Klamath Marsh NWR, Oregon in July grow in different places, consistent
-with Cornell's account of the species' molt strategy (flight feathers replaced in a
-complete molt primarily on/near the breeding grounds; body feathers replaced in a
-molt that can complete on the wintering grounds)? And does habitat (wetland/wet
-agriculture only, per Cornell's habitat account) and diet (carbon/nitrogen isotopes)
-help narrow down and cross-check where that is?
+Do body feathers and flight feathers from Yellow Rails (*Coturnicops
+noveboracensis*) captured at Klamath Marsh NWR, Oregon in July grow in
+different places, consistent with Cornell's account of the species' molt
+strategy (flight feathers replaced in a complete molt primarily on/near the
+breeding grounds; body feathers replaced in a molt that *can* continue into
+the wintering period, though this is not guaranteed)? And does habitat
+(wetland/wet agriculture only, per Cornell's habitat account) help narrow
+down where that is?
+
+## Major revision (this version)
+
+This version follows an external code/results review (conducted via
+GitHub Copilot, on the previous version of this pipeline and its outputs)
+that identified several analytical issues materially affecting the
+biological conclusions. Two changes were made as a direct result, both
+requested by the study's lead author after reviewing that feedback:
+
+1. **The two non-KLMA individuals ("San Diego ref bird" and `1272-31742`)
+   are removed from the analysis entirely**, not merely excluded from
+   population-level averages as in the previous version. They were
+   previously framed as "reference individuals," but that framing doesn't
+   hold up: neither was captured as part of the KLMA sampling effort,
+   their capture dates relative to the KLMA birds are unknown, and -- most
+   importantly -- there is no independent knowledge of where either bird
+   actually bred or molted for their isotope-based assignment to be
+   checked against. (The external review flagged the San Diego bird's
+   assignment to the Pacific Northwest rather than the California coast as
+   a "red flag" for exactly this reason: without knowing where that
+   feather was actually grown, an assignment result can't be judged right
+   or wrong, so it wasn't functioning as a reference at all.) Their raw
+   records are preserved in `data/excluded_individuals.csv` for
+   transparency.
+2. **d2H alone (not the dual d2H+d18O model) is now the primary
+   assignment model.** The previous version used the dual-isotope model as
+   primary and reported the d2H-only model only as a sensitivity check.
+   That was backwards: d18O's calibration here is weak (R^2 = 0.08) and
+   its raw isoscape is r^2 = 0.99 correlated with d2H's across this study
+   area -- a condition `assignR::pdRaster()` itself warns about
+   ("specificity of assignments may be inflated"). Section 1b below
+   quantifies the consequence directly: switching between d2H-only and
+   dual-isotope changes the population-level body-feather result from
+   Pacific-Northwest-majority to Mexico-majority. A result that depends on
+   including a weak, highly collinear second marker should not be the
+   default model. The dual-isotope model is still run and reported, now
+   explicitly as one of several sensitivity checks rather than as the
+   primary result.
+
+This version also adds, directly from the external review's remaining
+recommendations: a habitat-prior-strength sensitivity check (weak/current/
+strong), a calibration-reference-group sensitivity check (Passerine vs.
+Water bird), and a check of whether the habitat prior itself is balanced
+between the Mexico and Pacific Northwest zones (independent of any isotope
+data). See "Results, section 1b" for all of these.
 
 ## Data
-- `data/SIA_Results_KLMA_2026.csv` (H/O isotopes, SIRFER lab): 46 feather samples,
-  12 KLMA-banded individuals + 1 "San Diego" reference bird, cross-referenced
-  against `data/SIA_Results_QAQC.csv` by SIRFER sample number.
-- Bird **`1272-31742`**: present in the original SIRFER QC file (job 24-215.2)
-  but never included in the KLMA study CSV -- its band-number prefix doesn't
-  match the KLMA birds' (1422- vs 1272-). Per user confirmation, this is a
-  reference specimen, not part of the core KLMA population; it's included
-  throughout for comparison (same treatment as the San Diego bird) but
-  excluded from the KLMA population-level summaries.
-- `data/SIBS_CN_230621_Kellerman.csv` (C/N isotopes, separate SIBS lab, same
-  envelope-ID numbering) cross-referenced against `data/SIBS_CN_QC_230621_Kellerman.csv`.
-- Cleaned/merged tables: `data/klma_clean.csv` (`scripts/00_clean_data.R`),
-  `data/cn_clean.csv` / `data/isotopes_combined_summary.csv` (`scripts/04_clean_cn_data.R`).
-- Three H/O samples were QC-flagged during cleaning: a Nape sample from bird
+- `data/SIA_Results_KLMA_2026.csv` (H/O isotopes, SIRFER lab): 46 feather
+  samples, cross-referenced against `data/SIA_Results_QAQC.csv` by SIRFER
+  sample number.
+- Two individuals are excluded entirely (see "Major revision" above): the
+  "San Diego ref bird" rows from the KLMA study file, and individual
+  `1272-31742`, present in the raw SIRFER QC file (job 24-215.2) but never
+  included in the KLMA study CSV (its band-number prefix, 1272- vs. the
+  KLMA birds' 1422-, doesn't match). Their 10 combined feather samples are
+  preserved in `data/excluded_individuals.csv` but do not appear anywhere
+  downstream.
+- `data/SIBS_CN_230621_Kellerman.csv` (C/N isotopes, separate SIBS lab,
+  same envelope-ID numbering) cross-referenced against
+  `data/SIBS_CN_QC_230621_Kellerman.csv`. Individual `1272-31742`'s C/N
+  samples are excluded here too, for the same reason.
+- Cleaned/merged tables: `data/klma_clean.csv` (`scripts/00_clean_data.R`,
+  43 feather samples from 12 KLMA individuals), `data/cn_clean.csv` /
+  `data/isotopes_combined_summary.csv` (`scripts/04_clean_cn_data.R`).
+- Three samples were QC-flagged during cleaning: a Nape sample from bird
   1422-02212 and a Nape sample from bird 1422-02214 (both implausibly high
   Wt% H/O, possible double-loading), and one Rectrix from 1422-02220 (O:H
   combustion ratio 8.5, far outside the normal 3.6-4.5 range). Separately,
   the C/N lab's own QC standards showed a consistent ~+2 permil enrichment
-  bias for d13C specifically (both QA standards read ~2 permil less
-  negative than their known consensus value).
+  bias for d13C specifically.
 - Growing-season precipitation isoscapes `d2h_GS.tif` / `d18o_GS.tif` (mean
   surfaces only, no prediction-SE grid -- see Limitations).
 - `data/habitat_prior.tif`: wetland/wet-cropland habitat suitability, built
   from ESA WorldCover 10m land cover (`scripts/05_build_habitat_prior.R`).
 
 ## Methods
-All analysis in R (`scripts/00`-`05`) using **assignR** (installed from GitHub
-source, `SPATIAL-Lab/assignR`, since CRAN was not reachable from this
-environment) plus `terra`/`sf`.
+All analysis in R (`scripts/00`-`06`) using **assignR** (installed from
+GitHub source, `SPATIAL-Lab/assignR`) plus `terra`/`sf`. True run order is
+00 -> 05 -> 01 -> 02 -> 03 -> 04 -> 06 (see `METHODS_WALKTHROUGH.md`).
 
-1. **Calibration (precipitation -> feather keratin).** assignR's built-in
-   known-origin database contains **no Rallidae** and essentially no North
-   American non-passerine oxygen data, so a Yellow-Rail-specific calibration
-   isn't possible. We used the North-America-masked **Passerine** group
-   (n=699 sites for d2H, n=167 sites for d18O) as the best available proxy.
-   The d2H regression is solid (R^2=0.76, slope=0.71, p<2e-16); the **d18O
-   regression is weak** (R^2=0.08, though still significant, p=0.0002). A
-   d2H-only "Water bird" (mallard/scaup) calibration was run as a
-   sensitivity check (R^2=0.55, similar slope, different intercept).
-   **A more consequential sensitivity issue, found on this review:**
-   `assignR::pdRaster()` itself warns "two or more isoscapes have shared
-   variance > 0.7, added information will be limited, and specificity of
-   assignments may be inflated." Checking this directly: the raw d2H and
-   d18O growing-season isoscapes are correlated at r^2=0.99 across this
-   study area (both trace the same precipitation fractionation process),
-   so despite its weak calibration fit, d18O is not statistically
-   independent of d2H the way `pdRaster`'s likelihood treats it. This
-   turns out to matter a lot in practice -- see "Results, 1b" below, where
-   dropping d18O and reassigning with d2H alone is shown to change one of
-   the headline results.
-2. **Isoscape uncertainty.** The supplied rasters have no SE band (the
+1. **Primary model: d2H only.** assignR's built-in known-origin database
+   contains **no Rallidae** and essentially no North American
+   non-passerine isotope data, so a Yellow-Rail-specific calibration isn't
+   possible. The North-America-masked **Passerine** group (n=699 sites) is
+   used as the best available proxy for the primary model (R^2 = 0.76,
+   slope = 0.71, p < 2e-16). d18O is deliberately **not** included in the
+   primary model -- see "Major revision" above and Results section 1b for
+   why, and for the dual-isotope, Water-bird-calibration, and
+   habitat-prior-strength variants that are still run as named sensitivity
+   checks rather than folded into one default result.
+2. **Isoscape uncertainty.** The supplied raster has no SE band (the
    authoritative source, wateriso.utah.edu, wasn't reachable from this
-   sandboxed environment). A spatially uniform SE was assumed (5 permil for
-   d2H, 0.6 permil for d18O), sized against assignR's own low-res example SE
-   raster.
-3. **Study area.** CA/NV/AZ/NM south through Baja California and the western
-   Mexican coast (the original frame of reference), extended north to
-   include OR/WA/ID/UT so Klamath Marsh itself (~43 N) remains a candidate
-   flight-feather origin.
+   sandboxed environment). A spatially uniform SE was assumed (5 permil
+   for d2H), sized against assignR's own low-res example SE raster.
+3. **Study area.** CA/NV/AZ/NM south through Baja California and the
+   western Mexican coast (the original frame of reference), extended
+   north to include OR/WA/ID/UT so Klamath Marsh itself (~43 N) remains a
+   candidate flight-feather origin.
 4. **Habitat suitability prior.** Yellow Rails occupy wet sedge meadow /
    marsh / wet agriculture only (Cornell's Birds of the World account) --
-   they are not found in the mountain, forest, or desert terrain that the
-   H/O-only maps were placing high probability on, purely because those
-   pixels happen to match the target d2H/d18O values by elevation. A
-   suitability layer was built from ESA WorldCover 2021 10m land cover
-   (herbaceous wetland = 1.0, cropland = 0.3 -- Cornell explicitly notes
-   "wet agricultural areas" as habitat, but WorldCover doesn't distinguish
-   flooded/irrigated cropland from dry cropland so this is a partial-credit
-   weight, permanent water = 0.1 for marsh-edge effects, everything else =
-   0), aggregated to the isoscape's ~9 km grid, and supplied to
-   `assignR::pdRaster()` as a multiplicative `prior`. 85 of 108 candidate
-   10m tiles across the study area had land data; after Gaussian smoothing,
-   101,813 of 1,209,600 cells (~8.4%) across the full North American grid
-   are nonzero -- most of the continent stays exactly zero. Within the
-   narrower study area itself the smoothing kernel's finite radius means
-   almost every cell picks up some nonzero value (it's not a hard binary
-   mask there), but the distribution stays heavily skewed toward near-zero
-   (median ~0.003; only about a third of study-area cells exceed 0.01).
+   a suitability layer was built from ESA WorldCover 2021 10m land cover
+   (herbaceous wetland = 1.0, cropland = 0.3, permanent water = 0.1,
+   everything else = 0), aggregated to the isoscape's ~9 km grid, Gaussian-
+   smoothed, and supplied to `assignR::pdRaster()` as a multiplicative
+   `prior`. 85 of 108 candidate 10m tiles across the study area had land
+   data; after smoothing, 101,813 of 1,209,600 cells (~8.4%) across the
+   full North American grid are nonzero (most of the continent stays
+   exactly zero); within the narrower study area the smoothing kernel's
+   finite radius means almost every cell has *some* nonzero value, but the
+   distribution stays heavily skewed toward near-zero (median ~0.003; only
+   about a third of study-area cells exceed 0.01).
    **This required a workaround for a real bug in assignR itself**:
    `pdRaster.isoStack()` crops the isoscape to `mask` internally but never
    crops `prior` to match, so the elementwise `assign * prior` step
-   silently recycled two differently-sized vectors -- every single sample's
-   posterior came out as exactly zero when first tested this way. The fix
-   was to pre-crop/mask both the isoscape and the prior to the study area
+   silently recycled two differently-sized vectors. The fix was to
+   pre-crop/mask both the isoscape and the prior to the study area
    ourselves and pass `mask = NULL` to `pdRaster()`.
    Sanity check: Mt. Whitney (4,421 m alpine peak, no habitat) samples at
    ~8.5x10^-15 probability in the population-body surface; Sacramento
-   National Wildlife Refuge (a real Central Valley wetland complex) samples
-   at ~6.2x10^-4 -- more than ten orders of magnitude apart, confirming the
-   prior is doing its job.
-5. **Assignment.** `assignR::pdRaster()` (dual d2H+d18O joint-normal
-   likelihood x habitat prior) on all 53 feather samples (43 from the 12
-   KLMA-banded individuals, 3 from the "San Diego" reference bird, and 7
-   from the `1272-31742` reference bird), normalized to the study area.
+   National Wildlife Refuge (a real Central Valley wetland complex)
+   samples at ~6.2x10^-4 -- more than ten orders of magnitude apart,
+   confirming the prior is doing its job. **New this version**: the
+   prior's own balance between the two zones under comparison was also
+   checked directly, independent of any isotope data (Results 1b) --
+   39.3% of total habitat-suitability mass falls in the Mexico zone versus
+   49.6% in the Pacific Northwest zone, so the mask is not dramatically
+   skewed toward either region.
+5. **Assignment.** `assignR::pdRaster()` on all 43 feather samples (12
+   KLMA individuals only), normalized to the study area.
 6. **Combining feathers per bird.** Where a bird had >1 feather in the same
    category, posteriors were multiplied and renormalized (shared-origin
-   assumption). Where that produced no shared support at all (checked
-   numerically), the mean of the individual posteriors was used instead and
-   flagged (`combine_method` column in the summary table).
+   assumption). Where that produced no shared support at all, the mean of
+   the individual posteriors was used instead and flagged (`combine_method`
+   column in the summary table).
 7. **Population summary.** Equal-weighted mean of KLMA individuals'
-   posteriors per category (San Diego and 1272-31742 reference birds
-   excluded).
+   posteriors per category.
 8. **Credible regions.** `assignR::qtlRaster(thresholdType = "prob")` --
    the smallest area containing 50/75/90% of the cumulative posterior
    probability.
 9. **C/N isotopes** (`scripts/04_clean_cn_data.R`) were cleaned and
-   cross-referenced against the H/O results by envelope ID + feather
-   category, and interpreted qualitatively (there's no established
-   continental d13C/d15N isoscape product at usable resolution the way
-   there is for d2H/d18O, so these aren't folded into the spatial model
-   directly -- they're a habitat/diet cross-check).
+   cross-referenced against the H/O results, interpreted qualitatively
+   (there's no established continental d13C/d15N isoscape product at
+   usable resolution the way there is for d2H/d18O).
+10. **Sensitivity analysis** (`scripts/06_sensitivity_check.R`, new this
+    version): reruns the assignment under five alternative configurations
+    -- dual-isotope, no habitat prior, weak habitat prior (prior^0.5),
+    strong habitat prior (prior^2), and Water-bird calibration -- and
+    compares each against the primary model. See Results 1b.
 
 ## Results
 
-### 1. Body vs. flight feathers point to different places, and it's now a much sharper picture
+### 1. Flight feathers robustly point to the Pacific Northwest; body feathers are genuinely unresolved between the Pacific Northwest and Mexico
 
 | | Body feathers | Flight feathers |
 |---|---|---|
-| Population probability, Mexico (Baja + mainland) | **58%** | 6% |
-| Population probability, OR+WA+CA+ID+UT | 31% | **86%** |
-| KLMA individuals with Mexico > 50% of their own probability | 6 of 10 | -- |
-| KLMA individuals with OR+WA+CA > 50% | -- | 11 of 12 |
-| 50%-credible-region area, population summary | **57,000 km^2** | **1,900 km^2** |
+| Population probability, Mexico (Baja + mainland), primary model | 34.6% | 0.8% |
+| Population probability, Pacific NW (OR+WA+CA+ID+UT), primary model | **59.6%** | **98.2%** |
+| Range across all 6 model variants (Results 1b), % Mexico | 27.8-53.3% | 0.01-4.1% |
+| Range across all 6 model variants, % Pacific NW | 36.3-64.1% | 74.1-99.3% |
+| 50%-credible-region area, population summary, primary model | 112,407 km^2 | 27,858 km^2 |
 
-Adding the habitat prior shrank the credible regions substantially
-(population body 50%-area: 389,000 km^2 pre-habitat-mask -> 57,000 km^2;
-flight: 3,900 -> 1,900 km^2) without changing the basic body-vs-flight story
--- the broad zone-level split was already coming from the isotope gradient
-itself, and the habitat mask sharpens *where within* that zone, excluding
-the mountain/forest/desert terrain that isotope value alone couldn't rule
-out. **Individual-level credible areas vary hugely and many are not
-trustworthy at face value -- see "Match quality" below before citing any
-single bird's area as a precise result.**
+Under the primary model (d2H only, Passerine calibration, current habitat
+prior), **both** body and flight feathers have a population-level majority
+probability in the Pacific Northwest -- but the two are still clearly
+different: flight feathers are far more concentrated there (98.2%) than
+body feathers (59.6%), and this gap (flight consistently far more
+Pacific-Northwest-concentrated than body) holds across **every one of the
+six model variants tested** (see Results 1b), making it the most robust
+finding in this dataset. **Individual-level credible areas are large and
+mostly not trustworthy at face value under this primary model -- see
+"Match quality" below.**
 
-- **Body feathers** lean toward Mexico (mainland + Baja combined) in the
-  main dual-isotope model, consistent with body (Formative/Definitive
-  Basic) molt completing on the wintering grounds -- but see **1b below**,
-  where this specific result (not the body-vs-flight contrast itself) is
-  shown to be sensitive to the d18O collinearity issue and should be read
-  with real caution. Several individuals (1422-02211, -02214, -02217, and
-  especially the reference bird 1272-31742 at 95%) show most of that
-  signal specifically on wintering-appropriate wetland patches along the
-  Mexican coast rather than diffusely across the whole region.
-- **Flight feathers** remain concentrated in the Pacific Northwest
-  interior/coast, consistent with the complete prebasic molt of remiges
-  happening primarily on/near breeding habitat. Unlike the body-feather
-  result, this one is *not* sensitive to dropping d18O (see 1b) -- it
-  actually gets stronger (86% -> 98% Pacific Northwest probability) under
-  d2H alone.
-- The same birds flagged before remain outliers under the habitat-masked
-  model too -- the QC/consistency flags and the geographic outlier status
-  still line up. This now includes a fourth case found on review:
-  1422-02212's own flight feathers are isotopically inconsistent with each
-  other (`combine_method = inconsistent_feathers_mean_fallback`), plausibly
-  linked to its QC-flagged Nape sample above, in addition to 1422-02219's
-  body feathers and 1422-02251's flight feathers.
+- **Flight feathers** are robustly assigned to the Pacific Northwest
+  interior/coast under every model variant tested (74.1-99.3% across all
+  six), consistent with the complete prebasic molt of remiges happening
+  primarily on/near breeding habitat (Cornell's account).
+- **Body feathers** are not robustly assigned to any single zone. Under
+  the primary model they lean Pacific Northwest (59.6% vs. 34.6% Mexico);
+  under the dual-isotope and Water-bird-calibration sensitivity variants
+  they lean Mexico (53.3% and 50.4% respectively); under the
+  habitat-prior-strength variants (weak/strong) the result stays close to
+  the primary model's (33.4-34.2% Mexico) regardless of how strongly the
+  habitat mask is weighted. In other words: **the habitat prior's
+  weighting is not what's driving the uncertainty in the body-feather
+  result -- the choice of isotope marker(s) and calibration reference
+  group is.** This is consistent with Cornell's account that body
+  (preformative) molt *can* continue into the wintering period but isn't
+  guaranteed to -- body feathers may represent breeding grounds,
+  migration stopover sites, or wintering areas depending on age and molt
+  completion timing, so an unresolved, mixed population-level signal is
+  biologically plausible, not just a modeling artifact.
+- **Unlike the previous (dual-isotope) version, no feather-combination
+  cases are flagged as isotopically inconsistent under the primary model**:
+  all 20 multi-feather combinations (two birds had only a single feather
+  in one category and needed no combination) succeeded via the standard
+  joint-product method, with no `inconsistent_feathers_mean_fallback`
+  cases. This makes sense mechanically -- a single, less spatially
+  discriminating marker (d2H alone) produces broader individual-feather
+  posteriors that are more likely to numerically overlap somewhere in the
+  study area, even for feathers that would have looked "inconsistent"
+  under the sharper dual-isotope posteriors. This is not evidence that the
+  shared-origin assumption is better supported under the primary model --
+  only that it's less often detectably violated by this particular check.
 
-### 1b. Sensitivity check: how much of the body-feather Mexico result is really coming from d18O?
+### 1b. Sensitivity analysis: six model variants, compared directly
 
-Prompted by `pdRaster()`'s own collinearity warning (see Methods, item 1),
-the full assignment was rerun using **d2H alone** (same habitat prior, same
-AOI, same calibration approach) to see how much the dual-isotope model's
-results actually depend on adding d18O, given that d18O's own spatial
-pattern is 99%-correlated with d2H's in this study area. The two runs were
-compared directly, bird by bird and population-level, not just by
-eyeballing maps.
+Six configurations were run and compared, individual-by-individual and at
+the population level (`scripts/06_sensitivity_check.R`,
+`outputs/tables/sensitivity_comparison.csv`):
 
-**Result: the flight-feather conclusion is robust; the body-feather
-Mexico-majority conclusion is not.**
+| Variant | What changed from primary | Body: % Mexico | Body: % Pacific NW | Body: 50%-CA (km^2) |
+|---|---|---|---|---|
+| **Primary** | -- | 34.6 | 59.6 | 112,407 |
+| Dual-isotope | + d18O | 53.3 | 36.3 | 70,477 |
+| No habitat prior | prior removed entirely | 27.8 | 40.8 | 1,172,234 |
+| Weak habitat prior | prior^0.5 (compressed) | 34.2 | 55.0 | 260,612 |
+| Strong habitat prior | prior^2 (exaggerated) | 33.4 | 64.1 | 46,672 |
+| Water-bird calibration | Passerine -> Water bird ref. group | 50.4 | 42.2 | 111,795 |
 
-| | Population Body | Population Flight |
-|---|---|---|
-| P(Mexico), dual-isotope (main model) | 57.7% | 6.1% |
-| P(Mexico), d2H-only | 34.6% | 0.8% |
-| P(Pacific NW: OR/WA/ID/UT/CA), dual-isotope | 31.4% | 85.8% |
-| P(Pacific NW: OR/WA/ID/UT/CA), d2H-only | 59.6% | 98.2% |
+(Flight-feather numbers across the same six variants range only 74.1-99.3%
+Pacific NW and 0.01-4.1% Mexico -- stable regardless of variant, and
+omitted from the table above for space; see the CSV for full figures.)
 
-For **flight feathers**, dropping d18O barely changes anything -- if
-anything the Pacific Northwest signal gets even stronger (86% -> 98%),
-meaning that result does not depend on the collinearity issue at all.
+Three conclusions follow directly from this table:
 
-For **body feathers**, dropping d18O flips the population-level majority
-zone: the dual-isotope model's 58%-Mexico / 31%-Pacific-NW split becomes a
-35%-Mexico / 60%-Pacific-NW split under d2H alone -- the *opposite*
-majority zone. This isn't just a population-averaging artifact: checking
-individual KLMA birds' body-feather posteriors the same way, most
-(1422-02211, -02214, -02215, -02216, -02217) show their own Mexico
-probability roughly cut in half when d18O is dropped (e.g. 1422-02211:
-84% -> 40%; 1422-02217: 83% -> 35%), while a few (1422-02212, -02218,
--02221) stay Pacific-NW-majority under both models, and only 1422-02213
-stays robustly Mexico-majority under both (93% -> 89%).
+1. **Habitat-prior strength has comparatively little effect on the
+   body-feather zone split**: a four-fold range in prior strength (weak to
+   strong) moves % Mexico by only about 1 percentage point (33.4-34.2%),
+   all close to the primary model's 34.6%. It has a much larger effect on
+   credible-region *size* (46,672 to 260,612 km^2) -- the prior mainly
+   controls precision, not which zone wins.
+2. **Removing the habitat prior entirely drops Mexico probability further
+   (27.8%) and explodes the credible area to 1.17 million km^2** --
+   confirming the prior is necessary for any usable precision, even though
+   it isn't the main driver of the Mexico-vs-Pacific-NW split itself.
+3. **The isotope marker and calibration-group choices are what actually
+   move the body-feather conclusion**: switching to dual-isotope or to a
+   Water-bird calibration reference group both push the body-feather
+   result to a Mexico-majority (53.3%, 50.4%), while the Passerine-based,
+   habitat-prior-strength variants all agree on a Pacific-Northwest-leaning
+   result (55.0-64.1%). Four of six variants lean Pacific NW for body
+   feathers; two (both involving either d18O or a different calibration
+   reference group) lean Mexico. This is genuinely unresolved with the
+   present data -- not a matter of picking the "right" prior weighting.
 
-**One important exception: the reference bird 1272-31742's body-feather
-result is robust.** Checked the same way, its 94.9% dual-isotope Mexico
-probability barely moves under d2H alone (95.6%) -- unlike the more
-marginal ~80-90%-Mexico KLMA individuals, its isotope values are extreme
-enough that either model points the same way with high confidence. (Its
-flight-feather result, already flagged elsewhere as isotopically
-inconsistent between its own feathers, is *not* robust -- it swings from
-29% to 0% Mexico probability -- but that result was already being
-excluded from firm interpretation for the unrelated inconsistency reason.)
-So this collinearity issue specifically undermines the *marginal* cases
-(most of the KLMA population's body feathers), not every Mexico-leaning
-result in the dataset.
+**Habitat-prior zone balance** (independent of any isotope data,
+addressing whether the mask itself could be biasing results toward one
+region): 39.3% of the habitat prior's total suitability mass falls within
+the Mexico zone, versus 49.6% within the Pacific Northwest zone (the
+remainder is in Nevada/Arizona/New Mexico); suitable area (prior > 0.01)
+is 459,286 km^2 in Mexico versus 512,430 km^2 in the Pacific Northwest.
+The mask is not dramatically skewed toward either region, so the
+difference in results between variants is not simply an artifact of
+Mexico habitat being underrepresented in ESA WorldCover.
 
-**What this does and doesn't mean:** it does not mean the dual-isotope
-result is simply "wrong" -- d18O's calibration, while weak (R^2=0.08), is
-still statistically significant, and `calRaster()` does correctly inflate
-its uncertainty to reflect that weak fit (rescaled sd ~2.6 permil vs the
-raw assumed 0.6 permil). d18O is carrying *some* real information. But
-`pdRaster`'s likelihood treats d2H and d18O as independent evidence when
-computing the joint posterior, and at r^2=0.99 they very much are not --
-so d18O's contribution is, per assignR's own warning, likely inflating the
-model's apparent confidence in the Mexico direction for body feathers more
-than is statistically justified. **The body-vs-flight contrast itself
-survives this check and remains the headline result** (flight feathers are
-far more Pacific-Northwest-concentrated than body feathers under both
-models, 98% vs 60% even in the more conservative d2H-only version) -- but
-the specific claim "body feathers show a Mexico-wintering majority" should
-be presented as suggestive, not confirmed, pending either an isoscape SE
-product that properly accounts for the d2H/d18O covariance, or treating
-d2H-only as the primary model with dual-isotope as a secondary sensitivity
-check (rather than the reverse, as this analysis currently does).
-
-### 2. Reference bird 1272-31742: a clean, confident result
-This bird (not part of the KLMA population, included for comparison) has
-the tightest, most confident result in the whole dataset: its 4 combined
-body feathers give a 94.9% probability of a mainland-western-Mexico origin,
-in a 50%-credible area of just 715 km^2. Unlike most of the KLMA
-population's more marginal body-feather results, this one is **robust** to
-the d2H/d18O collinearity issue in section 1b below -- it barely moves
-(94.9% -> 95.6%) when reassigned with d2H alone, because its isotope
-values are extreme enough that either model points the same way with high
-confidence. Its 3 flight feathers are more ambiguous (isotopically
-inconsistent with each other -- flagged) and split across Mexico,
-California, and the Pacific Northwest interior; that particular result is
-*not* robust to the same check, but it was already excluded from firm
-interpretation for the unrelated feather-inconsistency reason.
-
-### 3. Carbon/nitrogen isotopes: an independent habitat cross-check
-- **d13C is solidly C3 across every bird** (-18.4 to -25.5 permil) --
+### 2. Carbon/nitrogen isotopes: an independent habitat cross-check
+- **d13C is solidly C3 across every KLMA bird** (-25.5 to -22.2 permil) --
   nowhere near the C4 range (roughly -12 to -17 permil) that would flag
-  Spartina/Distichlis salt-marsh vegetation (the classic Gulf Coast
-  wintering habitat Cornell describes for some populations). These feathers
-  reflect freshwater sedge-marsh/wet-meadow-type diets, not brackish salt
-  marsh, for whichever molt event each feather represents.
-- **d15N does *not* reliably track the H/O-based Mexico probability --
-  this claim from an earlier version of this report was checked directly
-  against the data and does not hold up.** The full set of body-feather
-  d15N values alongside their dual-isotope Mexico probability
-  (`data/cn_vs_geography_comparison.csv`):
-
-  | Bird | d15N (permil) | P(Mexico), dual-isotope |
-  |---|---|---|
-  | 1272-31742 | 11.55 | 94.9% |
-  | 1422-02221 | 8.84 | 0.4% |
-  | 1422-02216 | 8.28 | **85.4%** |
-  | 1422-02219 | 11.61 | 43.9% (flagged, inconsistent feathers) |
-
-  1272-31742 and 1422-02221 do fit a "higher d15N -> higher Mexico
-  probability" pattern, but 1422-02216 directly contradicts it (low d15N,
-  85.4% Mexico), and 1422-02219 is a weak/ambiguous case already flagged
-  for an unrelated reason. With only 4 usable data points and one clear
-  counterexample, this is not a real trend -- it should not have been
-  reported as one. We're leaving this correction here rather than quietly
-  deleting the original claim, since it's a concrete example of the kind
-  of small-n pattern-matching this analysis needs to guard against.
+  *Spartina*/*Distichlis* salt-marsh vegetation. These feathers reflect
+  freshwater sedge-marsh/wet-meadow-type diets, not brackish salt marsh,
+  for whichever molt event each feather represents.
+- **d15N does not reliably track the H/O-based Mexico probability.** This
+  was checked directly against the data in an earlier version of this
+  report and did not hold up even before the primary-model change (one
+  bird, 1422-02216, directly contradicted the pattern: low d15N, high
+  Mexico probability). With the primary model now generally assigning
+  lower Mexico probabilities to begin with, and only 3 KLMA individuals
+  having both C/N and geographic-assignment data for body feathers, this
+  comparison remains too small to support a trend claim either way.
 - One bird (1422-02220) had four body-feather C/N subsamples split sharply
   between freshwater-typical (d15N = 8.1) and elevated (d15N = 14.9-15.3)
-  -- another case of an individual whose different body feathers evidently
-  didn't grow together, on top of the H/O-flagged cases above.
+  -- another individual whose different body feathers evidently didn't
+  grow together, on top of the H/O-flagged cases above.
 
 ## Outputs
-- `outputs/maps/population_body_vs_flight.png` -- the main figure (now
-  habitat-masked).
+- `outputs/maps/population_body_vs_flight.png` -- the main figure (primary
+  model: d2H only, current habitat prior).
 - `outputs/maps/habitat_prior.png` -- the wetland/wet-cropland suitability
   layer itself.
-- `outputs/maps/individuals_body.png`, `individuals_flight.png` -- per-bird
-  maps, including the reference birds.
+- `outputs/maps/individuals_body.png`, `individuals_flight.png` -- main
+  per-bird figures (unflagged birds only; under the primary model, this is
+  a small minority of birds -- see Match quality).
+- `outputs/maps/individuals_body_supplementary_flagged.png`,
+  `individuals_flight_supplementary_flagged.png` -- per-bird figures for
+  flagged birds.
 - `outputs/maps/calibration_regression_*.png` -- calibration diagnostics.
 - `outputs/tables/assignment_summary.csv` -- per-individual and population
   peak location, 50/75/90% credible areas, probability mass by zone, and
-  three match-quality columns (see "Match quality" below):
-  `peak_share`, `low_precision_flag`, `single_cell_dominant_flag`,
-  `shared_peak_flag`.
-- `data/isotopes_combined_summary.csv` -- C/N results cross-referenced
-  against raw H/O isotope values.
-- `data/cn_vs_geography_comparison.csv` -- C/N results cross-referenced
-  against the H/O-based geographic assignment (zone probabilities, peak
-  location, match-quality flags) -- the table behind Results sections 1b
-  and 3.
-- `outputs/tables/sensitivity_d2Honly_vs_dual.csv` (from
-  `scripts/06_sensitivity_check.R`) -- the d2H-only vs. dual-isotope
-  comparison behind Results section 1b, for every individual and
-  population surface.
+  match-quality columns (`peak_share`, `low_precision_flag`,
+  `single_cell_dominant_flag`, `shared_peak_flag`).
+- `outputs/tables/sensitivity_comparison.csv` -- the full 6-variant
+  comparison behind Results section 1b, every individual and population
+  surface.
+- `outputs/tables/habitat_prior_by_zone.csv` -- the habitat-prior
+  zone-balance check behind Results section 1b.
+- `data/isotopes_combined_summary.csv`, `data/cn_vs_geography_comparison.csv`
+  -- C/N results cross-referenced against H/O values and the geographic
+  assignment, respectively (KLMA individuals only).
+- `data/excluded_individuals.csv` -- the two non-KLMA individuals' raw
+  records, preserved for transparency but not used in any analysis.
 - `outputs/rasters/*.tif` -- full posterior surfaces, for further GIS work.
 - `data/habitat_prior.tif` -- the habitat suitability layer, for reuse.
 
 ## Match quality: not every tight credible region means a precise result
 
-Manual review after posting the last version found that several individuals'
-strikingly small credible regions (near-single-pixel, ~61 km^2) weren't
-independent precise results -- **unrelated birds with different measured
-isotope values were landing on the exact same grid cell.** Traced to its
-source: parts of the study area (eastern Idaho/Wyoming in particular) have
-an unusually *flat* isoscape (d2H standard deviation ~4.8 permil over a
-5x4 degree box there, vs. ~17 permil over the same size area in California),
-so the isotope data barely discriminates locations within it. Combined with
-a habitat-suitability layer that's sparse to begin with, several birds'
-broad, weakly-informative likelihood surfaces were all getting tipped onto
-whichever single cell had the locally highest habitat weight in that flat
-zone -- not a real match to that bird's own isotope signature. This is a
-real property of the data and calibration (see limitations below, esp. the
-assumed rather than measured isoscape SE) interacting with a sparse habitat
-mask, not a coding bug, but it means **a small credible area is not on its
-own evidence of a confident result.**
+This issue, first found in an earlier (dual-isotope-primary) version of
+this analysis, is **more severe under the current (d2H-only) primary
+model**, not less: 17 of 22 individual-category surfaces (77%) now carry
+at least one match-quality flag, up from 14 of 26 (54%) in the
+dual-isotope version. This is an expected and honestly-reported trade-off,
+not a new bug: d2H alone is less spatially discriminating than d2H+d18O
+(that's exactly why the two isotopes gave different population-level
+results in section 1b), so more individuals' weakly-informative likelihood
+surfaces default to whichever single cell the habitat prior favors most
+locally -- and because the habitat mask is sparse, many unrelated
+individuals converge on the *same* cell. The practical upshot is unchanged
+from before: **population-level zone probabilities (section 1 and 1b) are
+the trustworthy output of this analysis; individual-level peak locations
+and credible areas, under the primary model, mostly are not**, and should
+not be cited as precise results without checking the flag columns in
+`assignment_summary.csv` first.
 
-Two mitigations are in the pipeline now:
-1. The habitat prior is Gaussian-smoothed (~18 km) before use, so nearby
-   cells get partial credit instead of a hard cliff to zero. This helped
-   partially (e.g. reference bird 1272-31742's flight credible area grew
-   from 7,062 to 14,907 km^2) but did not eliminate the effect for the most
-   affected individuals -- the underlying flat-isoscape problem is still
-   there.
-2. Three flag columns in `assignment_summary.csv`:
-   - `peak_share`: fraction of a surface's entire probability mass held by
-     its single top cell. High values (>0.3, flagged as
-     `single_cell_dominant_flag`) mean the "credible region" is really
-     one dominant pixel.
-   - `shared_peak_flag`: TRUE if this surface's peak cell is identical to
-     another bird's peak cell -- the direct signature of the failure mode
-     above.
-   - `low_precision_flag`: TRUE if area50_km2 < 1,000 km^2 (a coarser,
-     easier-to-eyeball version of the same concern).
-
-At last count, 14 of 26 individual surfaces (roughly half) carry at least
-one of these flags. **For a manuscript, individual-level "this bird's
-origin was pinpointed to N km^2" claims should not be made for flagged
-birds** -- lean on the population-level zone probabilities instead, which
-are far more robust (they're area-weighted sums over the whole zone, not
-dependent on one argmax pixel).
+The three flag columns (unchanged in definition from the previous
+version): `peak_share` (fraction of a surface's probability mass in its
+single top cell), `single_cell_dominant_flag` (peak_share > 0.3 -- 0 of 22
+surfaces under the primary model, since d2H alone never concentrates that
+much probability in one cell), `shared_peak_flag` (peak cell identical to
+another individual's -- all 17 flagged surfaces are flagged for this
+reason alone), `low_precision_flag` (50%-credible area < 1,000 km^2 -- 0
+of 22 surfaces; the precision problem under d2H-only looks different,
+showing up as
+large shared credible regions rather than small ones).
 
 ## Key limitations (read before over-interpreting)
 1. **No Rallidae calibration data exist anywhere** in the standard
    known-origin isotope databases used by assignR. The Passerine-based
    calibration is the best available proxy, not a validated one for rails.
-2. **d18O is weakly calibrated (R^2=0.08) AND nearly collinear with d2H
-   (r^2=0.99 in the raw isoscape)**, which `pdRaster()` itself flags as a
-   condition where "specificity of assignments may be inflated." This is
-   not theoretical: Results section 1b above shows that dropping d18O and
-   reassigning with d2H alone flips the population body-feather result
-   from Mexico-majority (58%) to Pacific-Northwest-majority (60%), while
-   leaving the flight-feather result intact (in fact stronger). **The
-   body-feather Mexico-wintering claim specifically should be treated as
-   suggestive, not confirmed, until this is resolved** -- e.g. with an
-   isoscape SE product that models the d2H/d18O covariance rather than
-   treating the two as independent.
+   Section 1b shows this choice matters: switching to a Water-bird
+   reference group changes the body-feather population result from
+   Pacific-Northwest-majority to Mexico-majority.
+2. **d18O is weakly calibrated (R^2 = 0.08) and nearly collinear with d2H
+   (r^2 = 0.99 in the raw isoscape)** -- this is why it was removed from
+   the primary model (see "Major revision"). Section 1b shows its
+   inclusion alone is enough to flip the body-feather population result.
 3. **Isoscape SE was assumed, not measured.**
 4. **The habitat prior is approximate**: a single year (2021) of 10m land
-   cover, a coarse hand-picked weighting scheme (wetland=1.0/cropland=0.3/
-   water=0.1) rather than a validated habitat model, and it can't
-   distinguish flooded/irrigated cropland (real Yellow Rail habitat per
-   Cornell) from dry cropland (not habitat) -- both get the same 0.3
-   weight. It also can't see small/narrow marsh patches below its ~9 km
-   effective resolution particularly well (the 100m intermediate
-   decimation step used for computational tractability could miss the
-   smallest patches, though the largest, most likely-relevant marshes
-   should survive).
+   cover, a hand-picked (not statistically fit) weighting scheme, and it
+   cannot distinguish flooded/irrigated cropland (real Yellow Rail
+   habitat) from dry cropland (not habitat). However, section 1b's
+   prior-strength sensitivity check found this weighting scheme is *not*
+   the main driver of the body-feather result's instability -- a
+   four-fold range in prior strength moved the result by only ~1
+   percentage point.
 5. **No age data.** Cornell's account makes age class (HY/juvenile vs.
-   AHY/adult) important: a July-caught juvenile's feathers were grown on
-   the natal territory, while an adult's most recent flight feathers were
-   grown during the *previous* molt cycle, wherever that bird was at the
-   time. Without age class, the body-vs-flight contrast found here is
-   still consistent with the hypothesis, but can't distinguish "grown here
-   this year" from "grown somewhere similar last year."
+   AHY/adult) important, and separately, the preformative (body) molt's
+   timing relative to migration/wintering is itself variable (see Results
+   section 1). Without age class, neither the body-vs-flight contrast nor
+   the specific body-feather result can be tied to a single molt event
+   with confidence.
 6. **C/N isotopes are a qualitative cross-check, not folded into the
-   spatial model** -- there's no established fine-resolution continental
-   d13C/d15N isoscape the way there is for d2H/d18O.
-7. **Sample size** is small (12 KLMA individuals + 2 reference birds) and
-   several feathers per bird were pooled under a shared-origin assumption
-   that failed outright for 4 of the 14 birds with more than one feather in
-   some category (1422-02212, 1422-02219, and 1422-02251 among the KLMA
-   birds, plus the reference bird 1272-31742's flight feathers).
+   spatial model**, and the sample available for cross-referencing against
+   geography is very small (3 KLMA individuals with both measurements for
+   body feathers).
+7. **Sample size** is small (12 KLMA individuals only, as of this
+   version). Several feathers per bird were pooled under a shared-origin
+   assumption (20 multi-feather combinations); under the primary model
+   this assumption was not detectably violated for any individual (see
+   "Combining feathers" above), though this check is weaker under d2H
+   alone than it was under the dual-isotope model, where 4 combinations
+   failed outright.
+8. **Precision implied by reported percentages.** Given limitations 1-3
+   above, percentages in this report (e.g. "59.6% Pacific Northwest") are
+   reported to one decimal place for traceability against the output
+   tables, not as a claim of that level of real precision. Readers should
+   treat the ranges in section 1b's table, not any single percentage, as
+   the honest summary of what the data support for body feathers
+   specifically.
 
 ## Suggested next steps
-- **Highest priority**: resolve the d2H/d18O collinearity issue in
-  "Match quality... 1b" and "Key limitations" item 2 before treating the
-  body-feather Mexico-majority result as a finding for publication. At
-  minimum, report both the dual-isotope and d2H-only versions side by
-  side rather than only the dual-isotope one; ideally, obtain or derive an
-  isoscape product whose uncertainty model accounts for the known d2H/d18O
-  covariance (the Global/Local Meteoric Water Line) rather than treating
-  the two as independent evidence, which is what `pdRaster()`'s own
-  warning is flagging.
+- **Highest priority, unresolved**: the body-feather Mexico-vs-Pacific-
+  Northwest question cannot be resolved with the present data and
+  reference materials -- it depends on which of two defensible but
+  different modeling choices (isotope marker set, calibration reference
+  group) is used. Resolving it would need either a validated Rallidae- or
+  wetland-bird-specific calibration, or an isoscape uncertainty product
+  that properly models the d2H/d18O covariance instead of treating the
+  two as independent evidence.
 - Obtain the official prediction-SE isoscape grids from waterisotopes.org
   (blocked from this sandboxed environment) and rerun with real,
   spatially-varying SE.
-- Refine the habitat prior: a validated wetland classification (e.g.
-  National Wetlands Inventory for the US portion) and a way to distinguish
-  flooded/irrigated cropland from dryland cropland would both sharpen the
-  Mexico results specifically, where the wet-agriculture signal matters
-  most.
 - If plumage-based ages are assignable, rerun stratified by HY vs AHY.
+- If additional truly independent reference individuals (known capture
+  date and context matching the KLMA birds, ideally with some independent
+  knowledge of origin) become available, re-introduce them properly rather
+  than treating unvalidated specimens as references.
 - Consider re-running the analysis excluding/re-measuring 1422-02212 given
-  its QC flag, and treating 1422-02219/1422-02251/1272-31742-Flight as
-  reflecting genuinely discordant feathers rather than combining them.
+  its QC flag, and treating 1422-02219/1422-02251 as reflecting genuinely
+  discordant feathers rather than combining them.
 
 ## Change log
 - Initial version: assignR pipeline, no habitat mask.
-- Correction 1: fixed `qtlRaster` credible-region math (was using
-  `thresholdType = "area"`, which is not a real credible region) and the
-  Baja/mainland Mexico zone split (was silently returning 0 for Baja on
-  every individual); fixed map color scaling and missing legends.
+- Correction 1: fixed `qtlRaster` credible-region math and the
+  Baja/mainland Mexico zone split; fixed map color scaling and missing
+  legends.
 - Correction 2: added the ESA WorldCover habitat suitability prior
-  (fixing a real assignR bug in the process), added bird 1272-31742 as a
-  reference individual, added the carbon/nitrogen isotope cross-check.
-- Correction 3 (this version): map colors are now classified directly by
-  credible region (50% / 50-75% / 75-90% / outside 90%) instead of by
-  quantile-of-pixel-value. The quantile approach made broad,
-  actually-low-probability areas look "hot" by relative rank, so the
-  map's coloring and the credible-region area stats told visually
-  different stories (a "28,000 km^2 credible area" stat next to a map
-  that looked like most of the Southwest was lit up). Now the colored
-  area on the map matches the credible-region area in the stats table by
-  construction. Also dropped `per_feather_grid.png` -- an uncurated
-  byproduct of assignR's own internal plotting (terra caps it at 16 of
-  the 53 samples, with a color scheme unrelated to this project's maps)
-  that was never a real deliverable; `individuals_body.png`/
-  `individuals_flight.png` (one panel per bird, feathers already
-  combined) are the per-bird figures to use.
+  (fixing a real assignR bug in the process), added two individuals as
+  "reference" birds (since removed -- see below), added the C/N
+  cross-check.
+- Correction 3: map colors classified directly by credible region instead
+  of by quantile-of-pixel-value.
 - Correction 4: found and partially mitigated the single-cell convergence
-  issue described in "Match quality" above -- Gaussian-smoothed the habitat
-  prior and added `peak_share`, `low_precision_flag`,
-  `single_cell_dominant_flag`, and `shared_peak_flag` columns to the
-  summary table.
-- Correction 5 (this version): a line-by-line check of this report against
-  the actual data found several numbers had drifted out of sync with the
-  current pipeline output (mostly stale from before the habitat-prior
-  smoothing step was added). Fixed: the QC-flagged-sample count and
-  description (it's one Nape sample each from 1422-02212 and 1422-02214,
-  not two from 1422-02212); the isotopically-inconsistent-feather count
-  (4 cases, not 3 -- 1422-02212's flight feathers were missing from the
-  original list); the habitat-prior nonzero-cell percentages (the old
-  "~5.8%/~58%" figures were stale pre-smoothing numbers); and the Mt.
-  Whitney/Sacramento NWR sanity-check values (updated to the current
-  raster's actual values, which if anything show an even larger
-  mountain-vs-wetland contrast than originally reported).
-- Correction 6 (this version): reran the full pipeline end to end from the
-  raw data and confirmed it is fully deterministic (every output file --
-  rasters, tables, and derived CSVs -- came back byte-for-byte identical
-  to the previously committed version; `git status` showed zero diff
-  after the full rerun). While investigating an `assignR::pdRaster()`
-  warning surfaced during that rerun ("two or more isoscapes have shared
-  variance > 0.7, added information will be limited, and specificity of
-  assignments may be inflated"), found and quantified a substantive,
-  previously-undocumented sensitivity issue: the raw d2H/d18O isoscapes
-  are r^2=0.99 correlated in this study area, and a d2H-only reassignment
-  (same habitat prior, same calibration approach) flips the population
-  body-feather result from Mexico-majority to Pacific-Northwest-majority,
-  while leaving the flight-feather result intact. Added as "Results,
-  section 1b" and promoted to the #2 item in "Key limitations" and the
-  top item in "Suggested next steps," since it bears directly on how
-  confidently the body-feather Mexico-wintering claim can be stated.
+  issue described in "Match quality" above.
+- Correction 5: fixed several numbers that had drifted out of sync with
+  the pipeline (QC-flag description, inconsistent-feather count, habitat-
+  prior percentages, Mt. Whitney/Sacramento NWR sanity-check values).
+- Correction 6: full pipeline rerun confirmed byte-for-byte determinism;
+  found and quantified the d2H/d18O collinearity sensitivity issue (see
+  former Results 1b, now superseded by this version's expanded section
+  1b).
+- **This version (major revision)**: following external code/results
+  review, (a) removed the two non-KLMA "reference" individuals entirely,
+  since they were never true reference individuals; (b) made d2H alone
+  the primary model instead of dual-isotope, moving dual-isotope to a
+  named sensitivity check; (c) added habitat-prior-strength and
+  calibration-reference-group sensitivity checks; (d) added a
+  habitat-prior zone-balance check; (e) rewrote the Results and
+  Limitations sections around the finding that the body-feather
+  Mexico-vs-Pacific-Northwest question is genuinely unresolved by the
+  present data, while the body-vs-flight contrast itself remains robust
+  across every model variant tested.

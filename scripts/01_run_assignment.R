@@ -1,25 +1,64 @@
 # 01_run_assignment.R
 # assignR-based geographic origin assignment for KLMA Yellow Rail feathers.
 #
+# PRIMARY MODEL (this script's main output, outputs/rasters/pd_per_feather.tif):
+# d2H ALONE, Passerine calibration, current (Gaussian-smoothed) habitat
+# prior, KLMA individuals only (12 birds, 43 feathers).
+#
+# This changed from an earlier version of this analysis, which used the
+# dual-isotope (d2H+d18O) model as primary. On review (prompted by an
+# external code/results review and confirmed with our own sensitivity
+# check -- see scripts/06_sensitivity_check.R and REPORT.md), that was the
+# wrong default for two independent reasons:
+#   1. d18O calibration against this North America-masked Passerine
+#      reference group is weak (R^2 = 0.08), and the raw d2H/d18O growing-
+#      season isoscapes are r^2 = 0.99 correlated across this study area --
+#      assignR::pdRaster() itself warns about exactly this condition
+#      ("shared variance > 0.7 ... specificity of assignments may be
+#      inflated"). Treating d18O as a second independent evidence
+#      dimension when it is this collinear with d2H can narrow posteriors
+#      (and shift zone-level probabilities) in a way that isn't
+#      statistically justified.
+#   2. Dropping d18O and reassigning with d2H alone reversed the
+#      population-level body-feather result (Mexico-majority ->
+#      Pacific-Northwest-majority) while leaving the flight-feather result
+#      intact. A result that reverses when a weakly-calibrated, highly
+#      collinear second marker is removed should not be the default/primary
+#      analysis -- it belongs in a sensitivity check, not the headline
+#      model. The dual-isotope model is still run and reported (as a
+#      sensitivity variant, in scripts/06_sensitivity_check.R), not
+#      dropped.
+#
 # Calibration: assignR ships no Rallidae (or any non-passerine) known-origin
-# d18O keratin data for North America, so a species-specific calibration is
-# not possible. We use the built-in North-America-masked "Passerine" group
-# (n=699 d2H sites, n=699/187 usable d18O sites) as the best-available proxy
-# calibration -- it is the only NA group in the database with enough paired
-# d2H/d18O known-origin sites to fit a robust regression. This is a real
+# keratin data for North America, so a species-specific calibration is not
+# possible. The North-America-masked "Passerine" group (n=699 d2H sites) is
+# used as the best-available proxy for the primary model. This is a real
 # limitation (Rallidae keratin-water fractionation may differ from
 # passerines) and is reported as such. A "Water bird" d2H-only calibration
 # (dabbling/diving waterfowl, ecologically closer to a marsh rail) is run
-# as a sensitivity check.
+# as a further sensitivity check, also in script 06.
 #
 # Isoscape uncertainty: the supplied d2h_GS.tif / d18o_GS.tif are mean-only
 # growing-season precipitation isoscapes (no SE band could be downloaded in
 # this environment -- wateriso.utah.edu is not reachable). A spatially
 # uniform isoscape SE is assumed (5 permil H, 0.6 permil O), based on the
-# magnitude of assignR's own example prediction-SE raster. This SE term is
-# minor relative to the tissue-calibration regression variance that
-# calRaster adds in quadrature, so its effect on final maps is small, but
-# it should be replaced with the official SE grid if the user obtains it.
+# magnitude of assignR's own example prediction-SE raster. This is a real
+# approximation and should be replaced with the official SE grid if it
+# becomes available.
+#
+# Reference individuals: the two non-KLMA individuals formerly carried
+# through this pipeline ("San Diego ref bird", "1272-31742") have been
+# removed entirely as of this version -- see the note in
+# scripts/00_clean_data.R. They do not appear in data/klma_clean.csv, so
+# nothing further is needed here to exclude them.
+#
+# Habitat prior sensitivity: this script also builds, and saves for script
+# 06 to use, "weak" and "strong" variants of the habitat suitability prior
+# (prior^0.5 and prior^2, respectively -- a one-parameter family that
+# preserves the underlying ESA WorldCover-derived suitability pattern while
+# varying how strongly it discounts non-habitat terrain), so the effect of
+# the prior's strength on the results can be checked directly rather than
+# asserted.
 
 suppressMessages({
   library(terra)
@@ -37,7 +76,6 @@ dir.create("outputs/maps", showWarnings = FALSE)
 dir.create("outputs/rasters", showWarnings = FALSE)
 
 ASSUMED_SD_D2H <- 5.0
-ASSUMED_SD_D18O <- 0.6
 
 # ---- 1. Study area (AOI) ----------------------------------------------------
 # NOTE: the user's original frame of reference (CA/NV/AZ/NM south through
@@ -89,38 +127,27 @@ klamath_buf <- st_as_sf(st_buffer(st_sfc(st_point(c(-121.6008333, 42.9766389)), 
                                    dist = 100000))
 klamath_buf_v <- vect(klamath_buf)
 
-# ---- 2. Isoscapes -----------------------------------------------------------
+# ---- 2. Isoscape (d2H only -- the primary model's only marker) ------------
+# d18O and the Water-bird calibration are NOT loaded here any more: the
+# primary model doesn't use them, and scripts/06_sensitivity_check.R
+# recomputes everything it needs from scratch anyway (SpatRaster objects
+# don't survive saveRDS()/readRDS() across the separate R processes each
+# script runs as -- see that script's header comment), so building them
+# here was pure wasted computation. Their calibration diagnostic plots
+# (calibration_regression_d18O.png, _d2H_waterbird_sensitivity.png) are
+# produced by script 06 instead, right where those models are actually
+# used.
 na_ext <- ext(-170, -50, 5, 75)
 d2h_mean <- crop(rast("d2h_GS.tif"), na_ext)
-d18o_mean <- crop(rast("d18o_GS.tif"), na_ext)
-d18o_mean <- resample(d18o_mean, d2h_mean, method = "bilinear")
-
 d2h_iso <- c(d2h_mean, setValues(d2h_mean, ASSUMED_SD_D2H))
 names(d2h_iso) <- c("mean", "sd")
-d18o_iso <- c(d18o_mean, setValues(d18o_mean, ASSUMED_SD_D18O))
-names(d18o_iso) <- c("mean", "sd")
 
-# ---- 3. Calibration (tissue <- precipitation) -------------------------------
+# ---- 3. Calibration (tissue <- precipitation), Passerine group, d2H -------
 data(naMap)
-
 known_H <- subOrigData(marker = "d2H", group = "Passerine", mask = naMap,
                         niter = 2000, genplot = FALSE)
-known_O <- subOrigData(marker = "d18O", group = "Passerine", ref_scale = "VSMOW_O",
-                        mask = naMap, niter = 2000, genplot = FALSE)
-
 png("outputs/maps/calibration_regression_d2H.png", width = 900, height = 700)
 cal_H <- calRaster(known_H, d2h_iso, genplot = TRUE, verboseLM = TRUE)
-dev.off()
-
-png("outputs/maps/calibration_regression_d18O.png", width = 900, height = 700)
-cal_O <- calRaster(known_O, d18o_iso, genplot = TRUE, verboseLM = TRUE)
-dev.off()
-
-# sensitivity calibration: Water bird group, d2H only
-known_H_wb <- subOrigData(marker = "d2H", group = "Water bird", mask = naMap,
-                           niter = 2000, genplot = FALSE)
-png("outputs/maps/calibration_regression_d2H_waterbird_sensitivity.png", width = 900, height = 700)
-cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = TRUE, verboseLM = TRUE)
 dev.off()
 
 # ---- 3b. Habitat prior (wetland / wet-cropland suitability) ----------------
@@ -145,30 +172,46 @@ aoi_crop_mask <- function(r) {
   mask(r, aoi)
 }
 cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)
-cal_O$isoscape.rescale <- aoi_crop_mask(cal_O$isoscape.rescale)
-iso_stack <- isoStack(cal_H, cal_O)
 
 habitat_prior <- rast("data/habitat_prior.tif")
-habitat_prior <- resample(aoi_crop_mask(habitat_prior), iso_stack[[1]], method = "near")
-crs(habitat_prior) <- crs(iso_stack[[1]])
+habitat_prior <- resample(aoi_crop_mask(habitat_prior), cal_H$isoscape.rescale, method = "near")
+crs(habitat_prior) <- crs(cal_H$isoscape.rescale)
+
+# "Weak"/"strong" prior-strength variants for script 06's habitat-prior
+# sensitivity check: a power transform preserves the underlying suitability
+# pattern (same relative ranking of cells) while compressing (weak,
+# exponent < 1, closer to a uniform/no-op prior) or exaggerating (strong,
+# exponent > 1, closer to a hard mask) how much it discounts non-habitat.
+habitat_prior_weak <- habitat_prior^0.5
+habitat_prior_strong <- habitat_prior^2
 
 # ---- 4. Load cleaned sample data --------------------------------------------
 samp <- read.csv("data/klma_clean.csv", stringsAsFactors = FALSE)
 samp$sample_id <- paste(samp$Envelope_ID, samp$Feather_type_clean, samp$Original_ID, sep = "__")
 
-unknown_df <- data.frame(ID = samp$sample_id, d2H = samp$d2H, d18O = samp$d18O)
+unknown_H <- data.frame(ID = samp$sample_id, d2H = samp$d2H)
 
-message("Running per-feather dual-isotope assignment for ", nrow(unknown_df), " samples...")
+message("Running primary per-feather assignment (d2H only, Passerine calibration, ",
+        "current habitat prior) for ", nrow(unknown_H), " samples...")
 # genplot = FALSE: pdRaster's own internal plot is a raw, uncurated
-# byproduct (terra caps it at 16 of our 53 panels, with assignR's default
-# color scheme unrelated to this project's maps) -- not a real deliverable.
+# byproduct (terra caps it at 16 panels, with assignR's default color
+# scheme unrelated to this project's maps) -- not a real deliverable.
 # scripts/03_make_maps.R builds the actual per-bird figures.
-pd_feather <- pdRaster(iso_stack, unknown = unknown_df, mask = NULL, prior = habitat_prior, genplot = FALSE)
-names(pd_feather) <- unknown_df$ID
+pd_feather <- pdRaster(cal_H, unknown = unknown_H, mask = NULL, prior = habitat_prior, genplot = FALSE)
+names(pd_feather) <- unknown_H$ID
 writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
 
-saveRDS(list(cal_H = cal_H, cal_O = cal_O, cal_H_wb = cal_H_wb, aoi = aoi_sf,
-             zones_names = names(zones)),
+# Saved for same-session inspection only (e.g. interactively in RStudio).
+# terra::SpatRaster objects wrap external C++ pointers that do not survive
+# saveRDS()/readRDS() across separate R processes -- they come back with
+# dead pointers and error on first use -- so scripts/06_sensitivity_check.R
+# recomputes these objects itself rather than reading this file (it runs as
+# its own `Rscript` process, like every script in this pipeline).
+saveRDS(list(cal_H = cal_H,
+             habitat_prior = habitat_prior,
+             habitat_prior_weak = habitat_prior_weak,
+             habitat_prior_strong = habitat_prior_strong,
+             aoi = aoi_sf, zones_names = names(zones)),
         "outputs/calibration_objects.rds")
 
-message("Step 1-4 complete. Saved per-feather posterior stack.")
+message("Step 1-4 complete. Saved primary per-feather posterior stack (d2H-only).")

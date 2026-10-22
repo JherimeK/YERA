@@ -147,7 +147,36 @@ if (any(klma$QC_flag != "ok")) {
           select(Original_ID, Envelope_ID, Feather_type_raw, d2H, d18O, WtH, WtO, OHratio, QC_flag))
 }
 
-# ---- 4. Write cleaned dataset -----------------------------------------------
+# ---- 4. Exclude the two non-KLMA individuals from the analysis -------------
+# "San Diego ref bird" and "1272-31742" were originally carried through this
+# pipeline as "reference individuals" for comparison. On review (see
+# REPORT.md change log), that framing doesn't hold up: neither was captured
+# as part of the KLMA sampling effort, their capture/collection dates are
+# unknown relative to the KLMA birds', and -- critically -- we have no
+# independent knowledge of where either one actually bred or molted, so
+# there is nothing for their isotope-based assignment to be "referenced"
+# against. Treating them as reference individuals implied a validation they
+# don't provide. Their raw records are preserved in
+# data/excluded_individuals.csv for transparency, but they are dropped here
+# and do not appear anywhere downstream (assignment, maps, tables, C/N
+# cross-check).
+excluded <- klma %>% filter(Group != "KLMA")
+if (nrow(excluded) > 0) {
+  write.csv(excluded %>%
+              select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
+                     Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
+                     POW_d2H_su, POW_d18O_su, QC_flag),
+            "data/excluded_individuals.csv", row.names = FALSE)
+  message("\nExcluded ", nrow(excluded), " feather samples from ",
+          length(unique(excluded$Envelope_ID)),
+          " non-KLMA individuals (not true reference individuals -- breeding/molt",
+          " origin unknown, different capture context): ",
+          paste(unique(excluded$Envelope_ID), collapse = ", "),
+          ". Preserved in data/excluded_individuals.csv.")
+}
+klma <- klma %>% filter(Group == "KLMA")
+
+# ---- 5. Write cleaned dataset -----------------------------------------------
 out <- klma %>%
   select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
          Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
@@ -155,5 +184,5 @@ out <- klma %>%
 
 write.csv(out, "data/klma_clean.csv", row.names = FALSE)
 message("\nWrote data/klma_clean.csv with ", nrow(out), " feather samples from ",
-        length(unique(out$Envelope_ID)), " individuals.")
+        length(unique(out$Envelope_ID)), " KLMA individuals.")
 message("Individuals: ", paste(unique(out$Envelope_ID), collapse = ", "))

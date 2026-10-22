@@ -39,9 +39,20 @@ cn <- cn %>%
       TRUE ~ NA_character_
     ),
     # band-number prefix 1272- does not match the KLMA 1422- prefix pattern
-    # used elsewhere in this study -- flag rather than assume
-    Group = ifelse(str_starts(Envelope_ID, "1422-"), "KLMA", "Non_KLMA_flagged")
+    # used elsewhere in this study
+    Group = ifelse(str_starts(Envelope_ID, "1422-"), "KLMA", "Non_KLMA_excluded")
   )
+
+# Exclude individual 1272-31742, same as scripts/00_clean_data.R: not a
+# true reference individual (unknown breeding/molt origin, different
+# capture context from the KLMA birds), so dropped from the analysis
+# entirely rather than carried through as a comparison point.
+n_excluded <- sum(cn$Group == "Non_KLMA_excluded")
+if (n_excluded > 0) {
+  message("Excluding ", n_excluded, " C/N sample(s) from non-KLMA individual(s): ",
+          paste(unique(cn$Envelope_ID[cn$Group == "Non_KLMA_excluded"]), collapse = ", "))
+}
+cn <- cn %>% filter(Group == "KLMA")
 
 write.csv(cn, "data/cn_clean.csv", row.names = FALSE)
 message("Wrote data/cn_clean.csv: ", nrow(cn), " C/N samples from ",
