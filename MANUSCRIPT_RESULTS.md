@@ -104,15 +104,16 @@ large majority of posterior probability (98.2%) to the Pacific Northwest
 (Oregon, Washington, Idaho, Utah, California combined), versus 0.8% to
 Mexico (Baja California + mainland western Mexico); the 50%-credible
 region covered 27,858 km². Body feathers leaned toward the Pacific
-Northwest as well, but far less decisively (59.6% Pacific Northwest vs.
-34.6% Mexico; 50%-credible region 112,407 km²). At the individual level,
+Northwest as well, but far less decisively (59.5% Pacific Northwest vs.
+34.7% Mexico; 50%-credible region 112,733 km²). At the individual level,
 12 of 12 individuals with flight-feather data had a majority (>50%) of
 their own posterior probability in the Pacific Northwest (range
-88.5–99.5%, median 99.1%), while only 1 of 10 individuals with
-body-feather data had a majority in Mexico (range 0.03–89.3%, median
-37.3%) — the body-feather population-level lean toward the Pacific
-Northwest is driven by most individuals sitting in an ambiguous 30–60%
-range rather than a consistent majority either way (Table T1; Figures F2,
+89.0–99.5%, median 99.1%), while only 2 of 10 individuals with
+body-feather data had a majority in Mexico (range 0.04–89.3%, median
+37.6%; one of the two, 1422-02214, is a marginal case at 50.5%, not a
+clear majority) — the body-feather population-level lean toward the
+Pacific Northwest is driven by most individuals sitting in an ambiguous
+30–60% range rather than a consistent majority either way (Table T1; Figures F2,
 F3).
 
 ### Sensitivity analysis: the body-feather result is not robust to isotope-marker or calibration-group choice
@@ -123,20 +124,20 @@ across five alternative configurations tested (Table T2): a dual-isotope
 habitat-prior-strength variants (prior raised to the 0.5 and 2 power,
 respectively), and a Water-bird-calibration variant. Across all six
 configurations (including the primary model), the flight-feather
-population-level Pacific Northwest probability ranged only 74.1–99.3% (and
-Mexico probability 0.01–4.1%).
+population-level Pacific Northwest probability ranged only 74.1–99.4% (and
+Mexico probability 0.01–4.0%).
 
 The body-feather result was not stable (Table T2). Two of the five
 sensitivity variants reversed the primary model's Pacific-Northwest lean
-into a Mexico majority: the dual-isotope model (53.3% Mexico vs. 36.3%
-Pacific Northwest) and the Water-bird-calibration model (50.4% vs. 42.2%).
+into a Mexico majority: the dual-isotope model (53.1% Mexico vs. 36.6%
+Pacific Northwest) and the Water-bird-calibration model (50.5% vs. 42.2%).
 The habitat-prior-strength variants, by contrast, stayed close to the
-primary model regardless of direction: weak prior gave 34.2% Mexico /
-55.0% Pacific Northwest, and strong prior gave 33.4% / 64.1% — a
+primary model regardless of direction: weak prior gave 34.3% Mexico /
+55.0% Pacific Northwest, and strong prior gave 33.5% / 64.1% — a
 four-fold range in prior strength moved the Mexico probability by only
 about 1 percentage point. Removing the habitat prior entirely dropped
-Mexico probability further (27.8%) and increased the 50%-credible area
-from 112,407 km² to 1,172,234 km², confirming the prior's necessity for
+Mexico probability further (27.9%) and increased the 50%-credible area
+from 112,733 km² to 1,176,595 km², confirming the prior's necessity for
 any usable precision even though it was not the primary driver of the
 Mexico-vs-Pacific-Northwest disagreement among variants. In sum: **the
 choice of isotope marker(s) and calibration reference group, not the
@@ -187,30 +188,30 @@ direction.
 
 | Bird | Feathers | n | Peak (lon, lat) | 50%-CA (km²) | 90%-CA (km²) | % Mexico | % Pacific NW | Note |
 |---|---|---|---|---|---|---|---|---|
-| 1422-02211 | Body | 2 | −121.96, 39.38 | 63,849 | 293,830 | 39.5 | 54.9 | Low match quality |
-| 1422-02211 | Flight | 2 | −117.13, 47.29 | 19,420 | 94,936 | 0.0 | 98.8 | Low match quality |
-| 1422-02212 | Body | 2 | −118.96, 46.96 | 42,375 | 217,428 | 5.4 | 92.7 | Low match quality |
-| 1422-02212 | Flight | 2 | −118.96, 46.96 | 50,446 | 251,379 | 9.1 | 88.5 | Low match quality |
-| 1422-02213 | Body | 2 | −108.38, 25.54 | 16,464 | 104,978 | 89.3 | 0.7 | |
-| 1422-02213 | Flight | 2 | −117.29, 47.13 | 23,831 | 99,287 | 0.0 | 99.3 | Low match quality |
-| 1422-02214 | Body | 2 | −122.04, 39.29 | 61,881 | 288,370 | 49.7 | 43.9 | |
-| 1422-02214 | Flight | 2 | −117.29, 47.13 | 27,946 | 101,000 | 0.0 | 99.4 | Low match quality |
-| 1422-02215 | Body | 2 | −122.04, 39.38 | 62,115 | 291,592 | 43.6 | 50.5 | Low match quality |
-| 1422-02215 | Flight | 2 | −117.13, 47.29 | 20,373 | 95,958 | 0.0 | 98.9 | Low match quality |
-| 1422-02216 | Body | 1 | −122.04, 39.38 | 197,963 | 883,721 | 47.3 | 41.5 | Low match quality |
-| 1422-02216 | Flight | 2 | −117.29, 47.13 | 22,904 | 98,884 | 0.0 | 99.2 | Low match quality |
-| 1422-02217 | Body | 2 | −121.96, 39.38 | 67,370 | 296,806 | 35.1 | 59.7 | Low match quality |
-| 1422-02217 | Flight | 2 | −117.29, 47.13 | 24,165 | 99,619 | 0.0 | 99.3 | Low match quality |
-| 1422-02218 | Body | 2 | −118.96, 46.96 | 44,336 | 226,639 | 6.2 | 91.8 | Low match quality |
-| 1422-02218 | Flight | 2 | −117.29, 46.96 | 31,641 | 127,889 | 0.7 | 98.4 | |
-| 1422-02219 | Body | 2 | −117.29, 47.04 | 28,614 | 101,814 | 0.0 | 99.4 | |
-| 1422-02219 | Flight | 2 | −117.29, 47.13 | 20,730 | 96,275 | 0.0 | 99.0 | Low match quality |
-| 1422-02220 | Flight | 2 | −117.13, 47.29 | 19,056 | 94,240 | 0.0 | 98.7 | Low match quality |
-| 1422-02221 | Body | 1 | −121.96, 39.38 | 199,422 | 914,412 | 30.2 | 60.7 | Low match quality |
-| 1422-02221 | Flight | 2 | −117.29, 47.13 | 23,134 | 98,997 | 0.0 | 99.2 | Low match quality |
-| 1422-02251 | Flight | 3 | −118.88, 46.96 | 19,192 | 71,836 | 0.2 | 99.5 | |
-| **All KLMA (population mean)** | Body | 10 | −121.96, 39.38 | 112,407 | 483,503 | **34.6** | 59.6 | |
-| **All KLMA (population mean)** | Flight | 12 | −117.29, 47.13 | 27,858 | 126,296 | 0.8 | **98.2** | |
+| 1422-02211 | Body | 2 | −121.96, 39.38 | 63,840 | 293,712 | 39.5 | 54.9 | Low match quality |
+| 1422-02211 | Flight | 2 | −117.12, 47.29 | 19,420 | 94,692 | 0.0 | 98.8 | Low match quality |
+| 1422-02212 | Body | 2 | −118.96, 46.96 | 43,149 | 220,674 | 5.7 | 92.4 | Low match quality |
+| 1422-02212 | Flight | 2 | −118.96, 46.96 | 49,321 | 248,034 | 8.6 | 89.0 | Low match quality |
+| 1422-02213 | Body | 2 | −108.38, 25.54 | 16,464 | 105,902 | 89.3 | 0.7 | |
+| 1422-02213 | Flight | 2 | −117.29, 47.12 | 23,827 | 99,277 | 0.0 | 99.3 | Low match quality |
+| 1422-02214 | Body | 2 | −122.04, 39.29 | 61,898 | 287,742 | 50.5 | 43.0 | |
+| 1422-02214 | Flight | 2 | −117.29, 47.12 | 27,710 | 100,757 | 0.0 | 99.4 | Low match quality |
+| 1422-02215 | Body | 2 | −122.04, 39.38 | 61,773 | 290,955 | 44.4 | 49.6 | Low match quality |
+| 1422-02215 | Flight | 2 | −117.12, 47.29 | 20,129 | 95,716 | 0.0 | 98.9 | Low match quality |
+| 1422-02216 | Body | 1 | −122.04, 39.38 | 198,287 | 886,452 | 46.8 | 42.0 | Low match quality |
+| 1422-02216 | Flight | 2 | −117.29, 47.12 | 22,903 | 98,881 | 0.0 | 99.2 | Low match quality |
+| 1422-02217 | Body | 2 | −121.96, 39.38 | 66,802 | 296,251 | 35.6 | 59.1 | Low match quality |
+| 1422-02217 | Flight | 2 | −117.29, 47.12 | 24,161 | 99,613 | 0.0 | 99.3 | Low match quality |
+| 1422-02218 | Body | 2 | −118.96, 46.96 | 43,685 | 224,169 | 6.0 | 92.0 | Low match quality |
+| 1422-02218 | Flight | 2 | −117.29, 46.96 | 31,637 | 129,138 | 0.8 | 98.4 | |
+| 1422-02219 | Body | 2 | −117.29, 47.04 | 28,848 | 102,057 | 0.0 | 99.4 | |
+| 1422-02219 | Flight | 2 | −117.29, 47.12 | 20,488 | 96,296 | 0.0 | 99.0 | Low match quality |
+| 1422-02220 | Flight | 2 | −117.12, 47.29 | 18,931 | 94,002 | 0.0 | 98.7 | Low match quality |
+| 1422-02221 | Body | 1 | −121.96, 39.38 | 197,771 | 911,324 | 29.0 | 61.9 | Low match quality |
+| 1422-02221 | Flight | 2 | −117.29, 47.12 | 23,134 | 98,987 | 0.0 | 99.2 | Low match quality |
+| 1422-02251 | Flight | 3 | −118.88, 46.96 | 19,192 | 71,713 | 0.2 | 99.5 | |
+| **All KLMA (population mean)** | Body | 10 | −121.96, 39.38 | 112,733 | 483,474 | **34.7** | 59.5 | |
+| **All KLMA (population mean)** | Flight | 12 | −117.29, 47.12 | 27,858 | 125,774 | 0.8 | **98.2** | |
 
 "% Mexico" = Baja California + mainland western Mexico zone probabilities
 combined. "% Pacific NW" = Oregon + Washington/Idaho/Utah + California
@@ -223,12 +224,12 @@ any surface under this model).
 
 | | Body: % Mexico | Body: % Pacific NW | Body: 50%-CA (km²) | Flight: % Mexico | Flight: % Pacific NW |
 |---|---|---|---|---|---|
-| **Primary (δ2H, Passerine, current prior)** | **34.6** | **59.6** | 112,407 | 0.8 | **98.2** |
-| Dual-isotope | 53.3 | 36.3 | 70,477 | 0.01 | 90.7 |
-| No habitat prior | 27.8 | 40.8 | 1,172,234 | 0.7 | 74.1 |
-| Weak habitat prior | 34.2 | 55.0 | 260,612 | 1.0 | 93.0 |
-| Strong habitat prior | 33.4 | 64.1 | 46,672 | 0.6 | 99.3 |
-| Water-bird calibration | 50.4 | 42.2 | 111,795 | 4.1 | 94.6 |
+| **Primary (δ2H, Passerine, current prior)** | **34.7** | **59.5** | 112,733 | 0.8 | **98.2** |
+| Dual-isotope | 53.1 | 36.6 | 68,257 | 0.01 | 90.0 |
+| No habitat prior | 27.9 | 40.8 | 1,176,595 | 0.7 | 74.1 |
+| Weak habitat prior | 34.3 | 55.0 | 261,107 | 0.9 | 93.0 |
+| Strong habitat prior | 33.5 | 64.1 | 46,927 | 0.6 | 99.4 |
+| Water-bird calibration | 50.5 | 42.2 | 111,772 | 4.0 | 94.6 |
 
 Source: `outputs/tables/sensitivity_comparison.csv` (full per-individual
 version also in that file).

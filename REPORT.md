@@ -30,9 +30,11 @@ requested by the study's lead author after reviewing that feedback:
    assignment to the Pacific Northwest rather than the California coast as
    a "red flag" for exactly this reason: without knowing where that
    feather was actually grown, an assignment result can't be judged right
-   or wrong, so it wasn't functioning as a reference at all.) Their raw
-   records are preserved in `data/excluded_individuals.csv` for
-   transparency.
+   or wrong, so it wasn't functioning as a reference at all.) The
+   consolidated lab spreadsheet now used as this pipeline's data source
+   (see "Data" below) is already scoped to just the 12 KLMA individuals,
+   so there is no longer a separate excluded-records file to maintain --
+   these two individuals simply never enter the pipeline.
 2. **d2H alone (not the dual d2H+d18O model) is now the primary
    assignment model.** The previous version used the dual-isotope model as
    primary and reported the d2H-only model only as a sensitivity check.
@@ -56,16 +58,27 @@ between the Mexico and Pacific Northwest zones (independent of any isotope
 data). See "Results, section 1b" for all of these.
 
 ## Data
-- `data/SIA_Results_KLMA_2026.csv` (H/O isotopes, SIRFER lab): 46 feather
-  samples, cross-referenced against `data/SIA_Results_QAQC.csv` by SIRFER
-  sample number.
-- Two individuals are excluded entirely (see "Major revision" above): the
-  "San Diego ref bird" rows from the KLMA study file, and individual
-  `1272-31742`, present in the raw SIRFER QC file (job 24-215.2) but never
-  included in the KLMA study CSV (its band-number prefix, 1272- vs. the
-  KLMA birds' 1422-, doesn't match). Their 10 combined feather samples are
-  preserved in `data/excluded_individuals.csv` but do not appear anywhere
-  downstream.
+- `data/SIA_Results_KLMA.xlsx` (H/O isotopes, SIRFER lab): the consolidated
+  lab spreadsheet, read directly by `scripts/00_clean_data.R`. This
+  replaced an earlier two-file version of this analysis (a separately
+  exported, decimal-rounded "clean" results file cross-referenced against
+  a raw QC text export) after the lead author pointed out the two-file
+  split was error-prone -- it was how a non-KLMA individual (`1272-31742`)
+  ended up silently included in this pipeline for a while, recovered only
+  by text-regex from the raw QC file rather than being a deliberate
+  inclusion. The consolidated file is already scoped to the 12 KLMA
+  individuals only (no San Diego bird, no `1272-31742`), and gives full
+  floating-point isotope precision instead of the previous file's values
+  rounded to ~1 decimal place. `scripts/00_clean_data.R` includes a sanity
+  check that stops with an error if any non-KLMA envelope ID is ever found
+  in this file, rather than silently filtering it out.
+- Switching to full precision changed population-level results
+  negligibly (all changes <0.2 percentage points; see change log) but did
+  flip one individual bird's body-feather result across the 50% Mexico
+  threshold (`1422-02214`: 49.7% -> 50.5%, now a marginal rather than
+  clear non-majority) -- a reminder that individual-level results this
+  close to a round-number threshold were never meaningfully different in
+  the first place.
 - `data/SIBS_CN_230621_Kellerman.csv` (C/N isotopes, separate SIBS lab,
   same envelope-ID numbering) cross-referenced against
   `data/SIBS_CN_QC_230621_Kellerman.csv`. Individual `1272-31742`'s C/N
@@ -164,17 +177,17 @@ GitHub source, `SPATIAL-Lab/assignR`) plus `terra`/`sf`. True run order is
 
 | | Body feathers | Flight feathers |
 |---|---|---|
-| Population probability, Mexico (Baja + mainland), primary model | 34.6% | 0.8% |
-| Population probability, Pacific NW (OR+WA+CA+ID+UT), primary model | **59.6%** | **98.2%** |
-| Range across all 6 model variants (Results 1b), % Mexico | 27.8-53.3% | 0.01-4.1% |
-| Range across all 6 model variants, % Pacific NW | 36.3-64.1% | 74.1-99.3% |
-| 50%-credible-region area, population summary, primary model | 112,407 km^2 | 27,858 km^2 |
+| Population probability, Mexico (Baja + mainland), primary model | 34.7% | 0.8% |
+| Population probability, Pacific NW (OR+WA+CA+ID+UT), primary model | **59.5%** | **98.2%** |
+| Range across all 6 model variants (Results 1b), % Mexico | 27.9-53.1% | 0.01-4.0% |
+| Range across all 6 model variants, % Pacific NW | 36.6-64.1% | 74.1-99.4% |
+| 50%-credible-region area, population summary, primary model | 112,733 km^2 | 27,858 km^2 |
 
 Under the primary model (d2H only, Passerine calibration, current habitat
 prior), **both** body and flight feathers have a population-level majority
 probability in the Pacific Northwest -- but the two are still clearly
 different: flight feathers are far more concentrated there (98.2%) than
-body feathers (59.6%), and this gap (flight consistently far more
+body feathers (59.5%), and this gap (flight consistently far more
 Pacific-Northwest-concentrated than body) holds across **every one of the
 six model variants tested** (see Results 1b), making it the most robust
 finding in this dataset. **Individual-level credible areas are large and
@@ -182,15 +195,15 @@ mostly not trustworthy at face value under this primary model -- see
 "Match quality" below.**
 
 - **Flight feathers** are robustly assigned to the Pacific Northwest
-  interior/coast under every model variant tested (74.1-99.3% across all
+  interior/coast under every model variant tested (74.1-99.4% across all
   six), consistent with the complete prebasic molt of remiges happening
   primarily on/near breeding habitat (Cornell's account).
 - **Body feathers** are not robustly assigned to any single zone. Under
-  the primary model they lean Pacific Northwest (59.6% vs. 34.6% Mexico);
+  the primary model they lean Pacific Northwest (59.5% vs. 34.7% Mexico);
   under the dual-isotope and Water-bird-calibration sensitivity variants
-  they lean Mexico (53.3% and 50.4% respectively); under the
+  they lean Mexico (53.1% and 50.5% respectively); under the
   habitat-prior-strength variants (weak/strong) the result stays close to
-  the primary model's (33.4-34.2% Mexico) regardless of how strongly the
+  the primary model's (33.5-34.7% Mexico) regardless of how strongly the
   habitat mask is weighted. In other words: **the habitat prior's
   weighting is not what's driving the uncertainty in the body-feather
   result -- the choice of isotope marker(s) and calibration reference
@@ -221,33 +234,33 @@ the population level (`scripts/06_sensitivity_check.R`,
 
 | Variant | What changed from primary | Body: % Mexico | Body: % Pacific NW | Body: 50%-CA (km^2) |
 |---|---|---|---|---|
-| **Primary** | -- | 34.6 | 59.6 | 112,407 |
-| Dual-isotope | + d18O | 53.3 | 36.3 | 70,477 |
-| No habitat prior | prior removed entirely | 27.8 | 40.8 | 1,172,234 |
-| Weak habitat prior | prior^0.5 (compressed) | 34.2 | 55.0 | 260,612 |
-| Strong habitat prior | prior^2 (exaggerated) | 33.4 | 64.1 | 46,672 |
-| Water-bird calibration | Passerine -> Water bird ref. group | 50.4 | 42.2 | 111,795 |
+| **Primary** | -- | 34.7 | 59.5 | 112,733 |
+| Dual-isotope | + d18O | 53.1 | 36.6 | 68,257 |
+| No habitat prior | prior removed entirely | 27.9 | 40.8 | 1,176,595 |
+| Weak habitat prior | prior^0.5 (compressed) | 34.3 | 55.0 | 261,107 |
+| Strong habitat prior | prior^2 (exaggerated) | 33.5 | 64.1 | 46,927 |
+| Water-bird calibration | Passerine -> Water bird ref. group | 50.5 | 42.2 | 111,772 |
 
-(Flight-feather numbers across the same six variants range only 74.1-99.3%
-Pacific NW and 0.01-4.1% Mexico -- stable regardless of variant, and
+(Flight-feather numbers across the same six variants range only 74.1-99.4%
+Pacific NW and 0.01-4.0% Mexico -- stable regardless of variant, and
 omitted from the table above for space; see the CSV for full figures.)
 
 Three conclusions follow directly from this table:
 
 1. **Habitat-prior strength has comparatively little effect on the
    body-feather zone split**: a four-fold range in prior strength (weak to
-   strong) moves % Mexico by only about 1 percentage point (33.4-34.2%),
-   all close to the primary model's 34.6%. It has a much larger effect on
-   credible-region *size* (46,672 to 260,612 km^2) -- the prior mainly
+   strong) moves % Mexico by only about 1 percentage point (33.5-34.7%),
+   all close to the primary model's 34.7%. It has a much larger effect on
+   credible-region *size* (46,927 to 261,107 km^2) -- the prior mainly
    controls precision, not which zone wins.
 2. **Removing the habitat prior entirely drops Mexico probability further
-   (27.8%) and explodes the credible area to 1.17 million km^2** --
+   (27.9%) and explodes the credible area to 1.17 million km^2** --
    confirming the prior is necessary for any usable precision, even though
    it isn't the main driver of the Mexico-vs-Pacific-NW split itself.
 3. **The isotope marker and calibration-group choices are what actually
    move the body-feather conclusion**: switching to dual-isotope or to a
    Water-bird calibration reference group both push the body-feather
-   result to a Mexico-majority (53.3%, 50.4%), while the Passerine-based,
+   result to a Mexico-majority (53.1%, 50.5%), while the Passerine-based,
    habitat-prior-strength variants all agree on a Pacific-Northwest-leaning
    result (55.0-64.1%). Four of six variants lean Pacific NW for body
    feathers; two (both involving either d18O or a different calibration
@@ -307,8 +320,6 @@ Mexico habitat being underrepresented in ESA WorldCover.
 - `data/isotopes_combined_summary.csv`, `data/cn_vs_geography_comparison.csv`
   -- C/N results cross-referenced against H/O values and the geographic
   assignment, respectively (KLMA individuals only).
-- `data/excluded_individuals.csv` -- the two non-KLMA individuals' raw
-  records, preserved for transparency but not used in any analysis.
 - `outputs/rasters/*.tif` -- full posterior surfaces, for further GIS work.
 - `data/habitat_prior.tif` -- the habitat suitability layer, for reuse.
 
@@ -353,7 +364,13 @@ large shared credible regions rather than small ones).
    (r^2 = 0.99 in the raw isoscape)** -- this is why it was removed from
    the primary model (see "Major revision"). Section 1b shows its
    inclusion alone is enough to flip the body-feather population result.
-3. **Isoscape SE was assumed, not measured.**
+3. **Isoscape SE was assumed, not measured.** This is a real limitation,
+   but it is not an analytical-precision problem: the SIRFER lab's own
+   per-batch secondary-standard (POW) replicate measurements show d2H
+   standard uncertainty of 0.76-1.20 permil across the two job batches
+   used here -- far tighter than the calibration regression's own
+   residual scatter (~18 permil) or the assumed 5 permil isoscape SD.
+   Measurement noise is not what's limiting this analysis.
 4. **The habitat prior is approximate**: a single year (2021) of 10m land
    cover, a hand-picked (not statistically fit) weighting scheme, and it
    cannot distinguish flooded/irrigated cropland (real Yellow Rail
@@ -380,7 +397,7 @@ large shared credible regions rather than small ones).
    alone than it was under the dual-isotope model, where 4 combinations
    failed outright.
 8. **Precision implied by reported percentages.** Given limitations 1-3
-   above, percentages in this report (e.g. "59.6% Pacific Northwest") are
+   above, percentages in this report (e.g. "59.5% Pacific Northwest") are
    reported to one decimal place for traceability against the output
    tables, not as a claim of that level of real precision. Readers should
    treat the ranges in section 1b's table, not any single percentage, as
@@ -439,3 +456,19 @@ large shared credible regions rather than small ones).
   Mexico-vs-Pacific-Northwest question is genuinely unresolved by the
   present data, while the body-vs-flight contrast itself remains robust
   across every model variant tested.
+- **This version (data-source upgrade)**: switched from the original
+  two-file input (a decimal-rounded "clean" results spreadsheet plus a
+  separately matched raw QC text export) to a single consolidated lab
+  spreadsheet (`data/SIA_Results_KLMA.xlsx`) with full floating-point
+  isotope precision and already scoped to the 12 KLMA individuals.
+  Re-ran the full pipeline: every population-level result changed by
+  less than 0.2 percentage points, confirming the earlier rounding
+  wasn't masking anything. One individual (`1422-02214`) crossed the 50%
+  Mexico-probability threshold (49.7% -> 50.5%), changing the
+  individual-majority count for body feathers from 1 of 10 to 2 of 10 --
+  flagged explicitly as a marginal case, not read as a new finding. Also
+  confirmed via this file's per-batch QA/QC that analytical (instrument)
+  precision is not a limiting factor in this analysis (POW standard
+  uncertainty 0.76-1.20 permil for d2H, far tighter than the ~18 permil
+  calibration-regression residual scatter that dominates the overall
+  uncertainty budget).

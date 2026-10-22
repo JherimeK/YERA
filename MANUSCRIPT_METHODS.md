@@ -129,10 +129,10 @@ waterfowl, ecologically closer to a marsh-dwelling rail than a generic
 passerine; R² = 0.55) in place of the Passerine group, with δ2H only. The
 flight-feather result was stable across all five variants. The
 body-feather result was not: it depended on which isotope marker(s) and
-calibration reference group were used (ranging from 27.8% to 53.3%
+calibration reference group were used (ranging from 27.9% to 53.1%
 population-level probability assigned to Mexico across the six total
 configurations including the primary model), while habitat-prior strength
-specifically had comparatively little effect (33.4-34.6% across a
+specifically had comparatively little effect (33.5-34.7% across a
 four-fold range in prior strength). This is reported as a result in its
 own right (see Results) rather than used to select a single "best"
 configuration.

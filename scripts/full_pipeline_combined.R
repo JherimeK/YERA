@@ -15,11 +15,12 @@
 # are already established earlier in this combined run.
 #
 # PRIMARY MODEL: d2H alone, Passerine calibration, current habitat prior,
-# the 12 KLMA-banded individuals only (43 feathers). Step 7 reruns the
-# assignment under five alternative configurations (dual-isotope, no/weak/
-# strong habitat prior, Water-bird calibration) and compares each against
-# the primary model -- required reading before citing the body-feather
-# result specifically. See REPORT.md Results section 1b.
+# the 12 KLMA-banded individuals only (43 feathers, read directly from the
+# consolidated data/SIA_Results_KLMA.xlsx lab spreadsheet). Step 7 reruns
+# the assignment under five alternative configurations (dual-isotope,
+# no/weak/strong habitat prior, Water-bird calibration) and compares each
+# against the primary model -- required reading before citing the
+# body-feather result specifically. See REPORT.md Results section 1b.
 #
 # The individual numbered files in scripts/ remain the source of truth for
 # running or modifying any one step on its own. This combined file is
@@ -31,6 +32,7 @@
 # since every path below is relative to it, e.g. "data/...", "outputs/...").
 
 suppressMessages({
+  library(readxl)
   library(terra)
   library(sf)
   library(dplyr)
@@ -45,126 +47,100 @@ suppressMessages({
 # ==============================================================================
 
 
-klma <- read.csv("data/SIA_Results_KLMA_2026.csv", stringsAsFactors = FALSE)
-qaqc <- read.csv("data/SIA_Results_QAQC.csv", stringsAsFactors = FALSE, header = TRUE)
+path <- "data/SIA_Results_KLMA.xlsx"
+raw <- suppressMessages(read_excel(path, sheet = 1, col_names = FALSE))
+raw <- as.data.frame(lapply(raw, as.character), stringsAsFactors = FALSE)
+names(raw) <- paste0("c", seq_len(ncol(raw)))
 
-# ---- 1. Standardize KLMA study data ----------------------------------------
-names(klma) <- c("Original_ID", "d2H", "d18O", "WtH", "WtO", "OHratio",
-                  "Envelope_ID", "Feather_type_raw", "Feather_cat")
+# ---- 1. Split into per-job blocks -------------------------------------------
+# The sheet is a stacked lab report: one block per SIRFER job batch, each
+# with a header (job ID, analyst, run date), a table of per-feather sample
+# rows, then a "Quality Assurance"/"Quality Control" section with replicate
+# runs of the DS/ORX (primary) and POW (secondary) reference standards,
+# their averages, and standard uncertainties.
+job_starts <- which(raw$c1 == "SIRFER TCEA-IRMS-HO")
+job_ends <- c(job_starts[-1] - 1, nrow(raw))
 
-klma <- klma %>%
-  mutate(
-    Envelope_ID = str_trim(Envelope_ID),
-    Envelope_ID = ifelse(str_detect(Envelope_ID, regex("san\\s*de[ai]go", ignore_case = TRUE)),
-                          "San Diego ref bird", Envelope_ID),
-    Feather_type_raw = str_trim(Feather_type_raw),
-    # strip trailing replicate index ("Breast 1" -> "Breast", "Wing covert 1"/"2" kept distinct
-    # only for within-individual bookkeeping; category classification ignores the index)
-    Feather_type_clean = str_trim(str_remove(Feather_type_raw, "\\s*\\d+$")),
-    Feather_cat = str_trim(Feather_cat),
-    Group = ifelse(Envelope_ID == "San Diego ref bird", "San_Diego_ref", "KLMA")
-  )
-
-# Independent re-derivation of feather category from feather type, to check
-# the supplied Feather_cat column rather than trust it blindly.
-flight_kw <- "rectrix|rectrice|secondary|primary|tertial|covert"
-klma <- klma %>%
-  mutate(
-    Feather_cat_check = ifelse(str_detect(Feather_type_clean, regex(flight_kw, ignore_case = TRUE)),
-                                "Flight", "Body")
-  )
-mismatch <- klma %>% filter(Feather_cat != Feather_cat_check)
-if (nrow(mismatch) > 0) {
-  message("Feather category mismatches (using supplied Feather_cat): ")
-  print(mismatch[, c("Original_ID", "Envelope_ID", "Feather_type_raw", "Feather_cat", "Feather_cat_check")])
-}
-
-# ---- 2. Pull QA/QC context (job batch, run date, per-batch precision) ------
-# The QAQC file is a stacked lab report (4 job batches). Extract each batch's
-# header (job id, run date) and its "standard uncertainty" rows (DS, ORX, POW
-# reference materials), then map each Original_ID to its batch by row position.
-
-qraw <- readLines("data/SIA_Results_QAQC.csv")
-job_starts <- grep("^SIRFER TCEA-IRMS-HO", qraw)
-job_ends <- c(job_starts[-1] - 1, length(qraw))
-
+sample_rows <- list()
 batch_info <- list()
-sample_batch <- list()
 
 for (i in seq_along(job_starts)) {
-  chunk <- qraw[job_starts[i]:job_ends[i]]
-  job_line <- chunk[grep("^Job #", chunk)]
-  job_id <- str_trim(str_split_fixed(job_line, ",", 2)[1])
-  job_id <- str_remove(job_id, "^Job #\\s*")
-  date_line <- chunk[grep("Date analyzed:", chunk, fixed = TRUE)][1]
-  parts_dl <- str_split(date_line, ",")[[1]]
-  da_pos <- which(str_detect(parts_dl, "Date analyzed:"))
-  run_date <- str_trim(parts_dl[da_pos + 2])
+  chunk <- raw[job_starts[i]:job_ends[i], ]
 
-  # standard-uncertainty rows: "standard uncertainty,,<d2H>,<d18O>,..."
-  su_idx <- grep("^standard uncertainty", chunk)
-  su_vals <- lapply(su_idx, function(j) {
-    parts <- str_split(chunk[j], ",")[[1]]
-    c(d2H_su = suppressWarnings(as.numeric(parts[3])),
-      d18O_su = suppressWarnings(as.numeric(parts[4])))
-  })
-  # order in file: DS (primary ref), ORX (primary ref 2), POW (secondary/QC)
-  su_labels <- c("DS", "ORX", "POW")[seq_along(su_vals)]
-  names(su_vals) <- su_labels
+  job_line <- chunk$c1[str_detect(chunk$c1, "^Job #")]
+  job_id <- str_trim(str_remove(job_line[1], "^Job #\\s*"))
 
-  batch_info[[job_id]] <- list(run_date = run_date, su = su_vals)
+  date_row <- chunk[str_detect(chunk$c4, "Date analyzed:") & !is.na(chunk$c4), ]
+  run_date <- str_trim(date_row$c6[1])
 
-  # sample rows in this chunk: lines starting with ",<number>,"
-  samp_lines <- chunk[str_detect(chunk, "^,[0-9]+,")]
-  for (ln in samp_lines) {
-    parts <- str_split(ln, ",")[[1]]
-    sample_batch[[parts[2]]] <- job_id
+  # standard-uncertainty rows (one per reference material: DS, ORX, POW, in
+  # that order) have c1 == "standard uncertainty" and the d2H/d18O SU in
+  # columns 3/4.
+  su_rows <- chunk[!is.na(chunk$c1) & chunk$c1 == "standard uncertainty", ]
+  su_labels <- c("DS", "ORX", "POW")[seq_len(nrow(su_rows))]
+  su <- setNames(
+    lapply(seq_len(nrow(su_rows)), function(j) {
+      c(d2H_su = as.numeric(su_rows$c3[j]), d18O_su = as.numeric(su_rows$c4[j]))
+    }),
+    su_labels
+  )
+  batch_info[[job_id]] <- list(run_date = run_date, su = su)
+
+  # sample rows: c1 (SIRFER #) is blank and c2 (Original ID) is numeric
+  samp <- chunk[is.na(chunk$c1) & !is.na(chunk$c2) &
+                  suppressWarnings(!is.na(as.numeric(chunk$c2))), ]
+  if (nrow(samp) > 0) {
+    samp$Job_ID <- job_id
+    sample_rows[[job_id]] <- samp
   }
 }
 
-klma$Job_ID <- sapply(as.character(klma$Original_ID), function(x) {
-  v <- sample_batch[[x]]
-  if (is.null(v)) NA_character_ else v
-})
-klma$Run_date <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_character_ else batch_info[[j]]$run_date)
-klma$POW_d2H_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d2H_su"])
-klma$POW_d18O_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d18O_su"])
+klma <- bind_rows(sample_rows)
+klma <- klma %>%
+  transmute(
+    Original_ID = as.integer(c2),
+    d2H = as.numeric(c3),
+    d18O = as.numeric(c4),
+    WtH = as.numeric(c5),
+    WtO = as.numeric(c6),
+    OHratio = as.numeric(c7),
+    Envelope_ID = str_trim(c8),
+    Feather_type_raw = str_trim(c9),
+    Job_ID = Job_ID
+  )
 
-# ---- 2b. Pull in the "1272-31742" reference bird ----------------------------
-# This individual is in the original SIRFER QC file (job 24-215.2) but was
-# never included in the KLMA study CSV -- its band-number prefix (1272- vs.
-# the KLMA birds' 1422-) doesn't match, and per user confirmation it's a
-# reference specimen, not part of the core KLMA population. It's kept for
-# comparison (same treatment as the "San Diego ref bird" rows).
-ref_lines <- qraw[str_detect(qraw, ",1272-31742,")]
-ref_df <- do.call(rbind, lapply(ref_lines, function(ln) {
-  parts <- str_split(ln, ",")[[1]]
-  data.frame(Original_ID = as.integer(parts[2]), d2H = as.numeric(parts[3]), d18O = as.numeric(parts[4]),
-             WtH = as.numeric(parts[5]), WtO = as.numeric(parts[6]), OHratio = as.numeric(parts[7]),
-             Envelope_ID = parts[8], Feather_type_raw = parts[9], Feather_cat = NA_character_,
-             stringsAsFactors = FALSE)
-}))
-ref_df <- ref_df %>%
+# ---- 2. Attach per-batch run date and POW reference-standard precision -----
+klma$Run_date <- sapply(klma$Job_ID, function(j) batch_info[[j]]$run_date)
+klma$POW_d2H_su <- sapply(klma$Job_ID, function(j) batch_info[[j]]$su[["POW"]]["d2H_su"])
+klma$POW_d18O_su <- sapply(klma$Job_ID, function(j) batch_info[[j]]$su[["POW"]]["d18O_su"])
+
+# ---- 3. Feather category -----------------------------------------------------
+# strip trailing replicate index ("Breast 1" -> "Breast", "Wing covert 1"/"2"
+# kept distinct only for within-individual bookkeeping; category
+# classification ignores the index) and classify Body vs. Flight from the
+# feather-type keyword.
+flight_kw <- "rectrix|rectrice|secondary|primary|tertial|covert"
+klma <- klma %>%
   mutate(
-    Feather_type_raw = str_trim(Feather_type_raw),
-    Feather_type_clean = str_trim(str_remove(Feather_type_raw, "\\s*\\d+$")),
+    Feather_type_clean = str_trim(str_remove(Feather_type_raw, "\\s*(partial|\\d+)$")),
     Feather_cat = ifelse(str_detect(Feather_type_clean, regex(flight_kw, ignore_case = TRUE)),
                           "Flight", "Body"),
-    Feather_cat_check = Feather_cat,
-    Group = "Reference_1272-31742"
+    Group = "KLMA"
   )
-klma <- bind_rows(klma, ref_df)
 
-# job batch / precision lookup for the reference bird's samples too
-klma$Job_ID <- sapply(as.character(klma$Original_ID), function(x) {
-  v <- sample_batch[[x]]
-  if (is.null(v)) NA_character_ else v
-})
-klma$Run_date <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_character_ else batch_info[[j]]$run_date)
-klma$POW_d2H_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d2H_su"])
-klma$POW_d18O_su <- sapply(klma$Job_ID, function(j) if (is.na(j)) NA_real_ else batch_info[[j]]$su[["POW"]]["d18O_su"])
+# ---- 4. Sanity check: every individual should be a KLMA-banded bird -------
+# The whole point of switching to this consolidated source file was to stop
+# relying on post-hoc filtering to keep non-KLMA individuals out (see file
+# header). This is a belt-and-suspenders check, not the primary mechanism.
+non_klma <- klma %>% filter(!str_starts(Envelope_ID, "1422-"))
+if (nrow(non_klma) > 0) {
+  stop("Found ", nrow(non_klma), " sample(s) with a non-KLMA envelope ID (",
+       paste(unique(non_klma$Envelope_ID), collapse = ", "), ") in ", path,
+       " -- this source file was expected to already be scoped to KLMA",
+       " individuals only. Check the file before proceeding.")
+}
 
-# ---- 3. QA flags -------------------------------------------------------------
+# ---- 5. QA flags -------------------------------------------------------------
 # %O:%H ratio for keratin combustion is typically ~3.6-4.5. Flag rows well
 # outside that range (possible incomplete combustion / contamination) and
 # rows with implausibly high Wt% H or Wt% O (possible double-loading).
@@ -183,45 +159,21 @@ if (any(klma$QC_flag != "ok")) {
           select(Original_ID, Envelope_ID, Feather_type_raw, d2H, d18O, WtH, WtO, OHratio, QC_flag))
 }
 
-# ---- 4. Exclude the two non-KLMA individuals from the analysis -------------
-# "San Diego ref bird" and "1272-31742" were originally carried through this
-# pipeline as "reference individuals" for comparison. On review (see
-# REPORT.md change log), that framing doesn't hold up: neither was captured
-# as part of the KLMA sampling effort, their capture/collection dates are
-# unknown relative to the KLMA birds', and -- critically -- we have no
-# independent knowledge of where either one actually bred or molted, so
-# there is nothing for their isotope-based assignment to be "referenced"
-# against. Treating them as reference individuals implied a validation they
-# don't provide. Their raw records are preserved in
-# data/excluded_individuals.csv for transparency, but they are dropped here
-# and do not appear anywhere downstream (assignment, maps, tables, C/N
-# cross-check).
-excluded <- klma %>% filter(Group != "KLMA")
-if (nrow(excluded) > 0) {
-  write.csv(excluded %>%
-              select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
-                     Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
-                     POW_d2H_su, POW_d18O_su, QC_flag),
-            "data/excluded_individuals.csv", row.names = FALSE)
-  message("\nExcluded ", nrow(excluded), " feather samples from ",
-          length(unique(excluded$Envelope_ID)),
-          " non-KLMA individuals (not true reference individuals -- breeding/molt",
-          " origin unknown, different capture context): ",
-          paste(unique(excluded$Envelope_ID), collapse = ", "),
-          ". Preserved in data/excluded_individuals.csv.")
-}
-klma <- klma %>% filter(Group == "KLMA")
-
-# ---- 5. Write cleaned dataset -----------------------------------------------
+# ---- 6. Write cleaned dataset -----------------------------------------------
 out <- klma %>%
   select(Original_ID, Envelope_ID, Group, Feather_type_raw, Feather_type_clean,
          Feather_cat, d2H, d18O, WtH, WtO, OHratio, Job_ID, Run_date,
-         POW_d2H_su, POW_d18O_su, QC_flag)
+         POW_d2H_su, POW_d18O_su, QC_flag) %>%
+  arrange(Original_ID)
 
 write.csv(out, "data/klma_clean.csv", row.names = FALSE)
 message("\nWrote data/klma_clean.csv with ", nrow(out), " feather samples from ",
         length(unique(out$Envelope_ID)), " KLMA individuals.")
 message("Individuals: ", paste(unique(out$Envelope_ID), collapse = ", "))
+message("POW standard uncertainty (d2H) by batch: ",
+        paste(sprintf("%s=%.2f permil", names(batch_info),
+                       sapply(batch_info, function(b) b$su[["POW"]]["d2H_su"])),
+              collapse = "; "))
 
 
 
@@ -362,7 +314,6 @@ dir.create("outputs/maps", showWarnings = FALSE)
 dir.create("outputs/rasters", showWarnings = FALSE)
 
 ASSUMED_SD_D2H <- 5.0
-ASSUMED_SD_D18O <- 0.6
 
 # ---- 1. Study area (AOI) ----------------------------------------------------
 # NOTE: the user's original frame of reference (CA/NV/AZ/NM south through
@@ -414,39 +365,27 @@ klamath_buf <- st_as_sf(st_buffer(st_sfc(st_point(c(-121.6008333, 42.9766389)), 
                                    dist = 100000))
 klamath_buf_v <- vect(klamath_buf)
 
-# ---- 2. Isoscapes -----------------------------------------------------------
+# ---- 2. Isoscape (d2H only -- the primary model's only marker) ------------
+# d18O and the Water-bird calibration are NOT loaded here any more: the
+# primary model doesn't use them, and scripts/06_sensitivity_check.R
+# recomputes everything it needs from scratch anyway (SpatRaster objects
+# don't survive saveRDS()/readRDS() across the separate R processes each
+# script runs as -- see that script's header comment), so building them
+# here was pure wasted computation. Their calibration diagnostic plots
+# (calibration_regression_d18O.png, _d2H_waterbird_sensitivity.png) are
+# produced by script 06 instead, right where those models are actually
+# used.
 na_ext <- ext(-170, -50, 5, 75)
 d2h_mean <- crop(rast("d2h_GS.tif"), na_ext)
-d18o_mean <- crop(rast("d18o_GS.tif"), na_ext)
-d18o_mean <- resample(d18o_mean, d2h_mean, method = "bilinear")
-
 d2h_iso <- c(d2h_mean, setValues(d2h_mean, ASSUMED_SD_D2H))
 names(d2h_iso) <- c("mean", "sd")
-d18o_iso <- c(d18o_mean, setValues(d18o_mean, ASSUMED_SD_D18O))
-names(d18o_iso) <- c("mean", "sd")
 
-# ---- 3. Calibration (tissue <- precipitation) -------------------------------
+# ---- 3. Calibration (tissue <- precipitation), Passerine group, d2H -------
 data(naMap)
-
 known_H <- subOrigData(marker = "d2H", group = "Passerine", mask = naMap,
                         niter = 2000, genplot = FALSE)
-known_O <- subOrigData(marker = "d18O", group = "Passerine", ref_scale = "VSMOW_O",
-                        mask = naMap, niter = 2000, genplot = FALSE)
-
 png("outputs/maps/calibration_regression_d2H.png", width = 900, height = 700)
 cal_H <- calRaster(known_H, d2h_iso, genplot = TRUE, verboseLM = TRUE)
-dev.off()
-
-png("outputs/maps/calibration_regression_d18O.png", width = 900, height = 700)
-cal_O <- calRaster(known_O, d18o_iso, genplot = TRUE, verboseLM = TRUE)
-dev.off()
-
-# Water bird calibration: d2H only, saved here for script 06's calibration
-# sensitivity check (Passerine vs. Water bird), not used in the primary model.
-known_H_wb <- subOrigData(marker = "d2H", group = "Water bird", mask = naMap,
-                           niter = 2000, genplot = FALSE)
-png("outputs/maps/calibration_regression_d2H_waterbird_sensitivity.png", width = 900, height = 700)
-cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = TRUE, verboseLM = TRUE)
 dev.off()
 
 # ---- 3b. Habitat prior (wetland / wet-cropland suitability) ----------------
@@ -471,8 +410,6 @@ aoi_crop_mask <- function(r) {
   mask(r, aoi)
 }
 cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)
-cal_O$isoscape.rescale <- aoi_crop_mask(cal_O$isoscape.rescale)
-cal_H_wb$isoscape.rescale <- aoi_crop_mask(cal_H_wb$isoscape.rescale)
 
 habitat_prior <- rast("data/habitat_prior.tif")
 habitat_prior <- resample(aoi_crop_mask(habitat_prior), cal_H$isoscape.rescale, method = "near")
@@ -508,7 +445,7 @@ writeRaster(pd_feather, "outputs/rasters/pd_per_feather.tif", overwrite = TRUE)
 # dead pointers and error on first use -- so scripts/06_sensitivity_check.R
 # recomputes these objects itself rather than reading this file (it runs as
 # its own `Rscript` process, like every script in this pipeline).
-saveRDS(list(cal_H = cal_H, cal_O = cal_O, cal_H_wb = cal_H_wb,
+saveRDS(list(cal_H = cal_H,
              habitat_prior = habitat_prior,
              habitat_prior_weak = habitat_prior_weak,
              habitat_prior_strong = habitat_prior_strong,
@@ -1062,8 +999,17 @@ known_H <- subOrigData(marker = "d2H", group = "Passerine", mask = naMap, niter 
 known_O <- subOrigData(marker = "d18O", group = "Passerine", ref_scale = "VSMOW_O", mask = naMap, niter = 2000, genplot = FALSE)
 known_H_wb <- subOrigData(marker = "d2H", group = "Water bird", mask = naMap, niter = 2000, genplot = FALSE)
 cal_H <- calRaster(known_H, d2h_iso, genplot = FALSE, verboseLM = FALSE)
-cal_O <- calRaster(known_O, d18o_iso, genplot = FALSE, verboseLM = FALSE)
-cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = FALSE, verboseLM = FALSE)
+# These two calibrations are only used by the sensitivity variants below
+# (dual-isotope and waterbird_calibration respectively), not the primary
+# model -- their diagnostic plots are produced here rather than in
+# scripts/01_run_assignment.R for exactly that reason.
+dir.create("outputs/maps", showWarnings = FALSE)
+png("outputs/maps/calibration_regression_d18O.png", width = 900, height = 700)
+cal_O <- calRaster(known_O, d18o_iso, genplot = TRUE, verboseLM = TRUE)
+dev.off()
+png("outputs/maps/calibration_regression_d2H_waterbird_sensitivity.png", width = 900, height = 700)
+cal_H_wb <- calRaster(known_H_wb, d2h_iso, genplot = TRUE, verboseLM = TRUE)
+dev.off()
 
 aoi_crop_mask <- function(r) mask(crop(r, aoi), aoi)
 cal_H$isoscape.rescale <- aoi_crop_mask(cal_H$isoscape.rescale)

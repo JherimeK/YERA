@@ -32,7 +32,7 @@ depends on script `02`'s output, and script `06` depends on both `01` and
 
 | Order | File | What it needs | What it produces |
 |---|---|---|---|
-| 1 | `scripts/00_clean_data.R` | `data/SIA_Results_KLMA_2026.csv`, `data/SIA_Results_QAQC.csv` | `data/klma_clean.csv`, `data/excluded_individuals.csv` |
+| 1 | `scripts/00_clean_data.R` | `data/SIA_Results_KLMA.xlsx` | `data/klma_clean.csv` |
 | 2 | `scripts/05_build_habitat_prior.R` | internet access (downloads ESA WorldCover tiles), `d2h_GS.tif` | `data/habitat_prior.tif` |
 | 3 | `scripts/01_run_assignment.R` | `data/klma_clean.csv`, `data/habitat_prior.tif`, `d2h_GS.tif`, `d18o_GS.tif` | `outputs/rasters/pd_per_feather.tif` (primary model), calibration diagnostic plots |
 | 4 | `scripts/02_summarize_assignment.R` | `data/klma_clean.csv`, `outputs/rasters/pd_per_feather.tif` | `outputs/tables/assignment_summary.csv`, per-individual/population posterior rasters, credible-region rasters |
@@ -72,29 +72,37 @@ running or editing any one step on its own.
 
 ### Step 1 — `00_clean_data.R`: build the master feather-sample table
 
-- Reads the KLMA study spreadsheet (`SIA_Results_KLMA_2026.csv`: one row per
-  feather sample, with δ2H, δ18O, %H, %O, the H:O combustion ratio, bird
-  envelope ID, and feather type) and the SIRFER lab's raw QA/QC report
-  (`SIA_Results_QAQC.csv`, a stacked text export covering 4 analytical
-  batches/"jobs").
-- Cross-references every sample to its batch by SIRFER sample number
-  (`Original_ID`), pulling in the run date and that batch's own QC-standard
-  precision (from the POW secondary reference material) for traceability.
+- Reads `data/SIA_Results_KLMA.xlsx` directly: a single consolidated
+  SIRFER lab spreadsheet containing both the per-feather results (δ2H,
+  δ18O, %H, %O, the H:O combustion ratio, bird envelope ID, feather type)
+  and the full QA/QC context (job batches, DS/ORX/POW reference-standard
+  replicate runs, run dates, per-batch standard uncertainty), stacked as
+  one block per analytical job batch (2 batches here). This replaced an
+  earlier two-file version of this script (a separately exported,
+  decimal-rounded "clean" results CSV cross-referenced against a raw QC
+  text export of the same lab report) after the study's lead author
+  pointed out that split was error-prone — it was how a non-KLMA
+  individual (`1272-31742`) ended up silently included in this pipeline
+  for a while, recovered only by text-regex from the raw QC file rather
+  than being a deliberate inclusion. Reading one file that's already
+  correctly scoped removes that failure mode, and gives full
+  floating-point isotope precision instead of the old file's values
+  rounded to ~1 decimal place.
+- Splits the sheet into per-job blocks (by the repeating "SIRFER
+  TCEA-IRMS-HO" header row), parses each job's ID, run date, and POW
+  standard-uncertainty values, then extracts that job's sample rows (data
+  rows have a blank SIRFER # and a numeric Original ID).
 - Independently re-derives Body vs. Flight category from the feather-type
   text (matching against rectrix/rectrice/secondary/primary/tertial/covert
-  keywords) and cross-checks it against the supplied category column, so any
-  mislabeling gets flagged rather than silently trusted.
-- Also identifies two individuals that are **not part of the KLMA sampling
-  effort**: the "San Diego ref bird" rows already present in the KLMA study
-  spreadsheet (a different capture/collection context), and band
-  `1272-31742`, pulled directly out of the raw SIRFER QC text (present in
-  that lab's job batch 24-215.2 but never entered into the KLMA study
-  spreadsheet — its band-number prefix, `1272-`, doesn't match the KLMA
-  birds' `1422-`). **Both are excluded from the analysis entirely as of
-  this version** — see the note at the top of this document for why. Their
-  10 combined feather records are written to
-  `data/excluded_individuals.csv` for transparency, but nothing downstream
-  reads that file.
+  keywords).
+- **Includes a sanity check, not a filter**: every envelope ID is checked
+  to start with the KLMA band prefix (`1422-`), and the script stops with
+  an error if it ever finds one that doesn't, rather than silently
+  excluding it. This source file is already scoped to the 12 KLMA
+  individuals only — no "San Diego ref bird," no `1272-31742` — so nothing
+  needs to be filtered out here (an earlier version of this pipeline did
+  need that filtering step; see the note at the top of this document for
+  why those two individuals were excluded in the first place).
 - Flags (but does not drop) samples with an implausible O:H combustion ratio
   (outside ~3.0–5.5) or implausible %H/%O (possible double-loading). Three
   samples were flagged this way: a Nape sample from bird `1422-02212`
@@ -377,24 +385,24 @@ below is about the unresolved result specifically):
 
 | Variant | % Mexico | % Pacific NW | 50%-credible area (km²) |
 |---|---|---|---|
-| Primary (δ2H, Passerine, current prior) | 34.6 | 59.6 | 112,407 |
-| Dual-isotope | 53.3 | 36.3 | 70,477 |
-| No habitat prior | 27.8 | 40.8 | 1,172,234 |
-| Weak habitat prior | 34.2 | 55.0 | 260,612 |
-| Strong habitat prior | 33.4 | 64.1 | 46,672 |
-| Water-bird calibration | 50.4 | 42.2 | 111,795 |
+| Primary (δ2H, Passerine, current prior) | 34.7 | 59.5 | 112,733 |
+| Dual-isotope | 53.1 | 36.6 | 68,257 |
+| No habitat prior | 27.9 | 40.8 | 1,176,595 |
+| Weak habitat prior | 34.3 | 55.0 | 261,107 |
+| Strong habitat prior | 33.5 | 64.1 | 46,927 |
+| Water-bird calibration | 50.5 | 42.2 | 111,772 |
 
 Two things stand out:
 
 1. **Habitat-prior strength (weak vs. strong, a four-fold range) barely
-   moves the body-feather split** (33.4–34.2% Mexico, all close to the
-   primary model's 34.6%) — it mainly controls credible-region *size*
-   (46,672 to 260,612 km²), not which zone wins. This directly answers a
+   moves the body-feather split** (33.5–34.3% Mexico, all close to the
+   primary model's 34.7%) — it mainly controls credible-region *size*
+   (46,927 to 261,107 km²), not which zone wins. This directly answers a
    concern raised in review: the subjective habitat-weighting scheme is
    *not* the main source of instability in this result.
 2. **The isotope-marker and calibration-group choices are what actually
    move it**: both the dual-isotope and Water-bird-calibration variants
-   push the body-feather result to a Mexico-majority (53.3%, 50.4%),
+   push the body-feather result to a Mexico-majority (53.1%, 50.5%),
    while the Passerine-based, prior-strength variants all agree on a
    Pacific-Northwest-leaning result (55.0–64.1%). Four of six variants
    lean Pacific Northwest; two lean Mexico. **This is genuinely unresolved
@@ -414,7 +422,6 @@ variants.
 | File | What it is |
 |---|---|
 | `data/klma_clean.csv` | Cleaned master feather-sample table, KLMA individuals only |
-| `data/excluded_individuals.csv` | Raw records for the 2 excluded non-KLMA individuals (not used downstream) |
 | `data/habitat_prior.tif` | Wetland/wet-cropland habitat suitability raster |
 | `data/cn_clean.csv` | Cleaned C/N sample-level data, KLMA individuals only |
 | `data/cn_summary_by_individual.csv` | C/N means per bird × feather category |
