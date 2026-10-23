@@ -166,11 +166,18 @@ zone probabilities.
 ### Carbon and nitrogen isotopes
 
 Carbon and nitrogen isotope values were obtained from 14 feather samples
-across 5 of the 12 individuals. δ13C values across all individual-by-
-category means ranged from −25.5‰ to −22.2‰, consistent with a
-C3-plant-based diet throughout and showing no individual approaching the
-C4 signature (approximately −12‰ to −17‰) associated with
-*Spartina*/*Distichlis* salt-marsh vegetation. δ15N values ranged from
+across 5 of the 12 individuals. δ13C values were corrected for a
+systematic +2.05‰ enrichment bias identified from the analytical lab's
+in-house QA standards (two independent plant standards, both reading
+δ13C enriched relative to known consensus values by a consistent ~2‰
+despite spanning a ~27‰ range: +2.10‰ and +2.01‰); δ15N showed no
+comparable bias and was not corrected. Corrected δ13C values across all
+individual-by-category means ranged from −27.6‰ to −24.3‰, consistent
+with a C3-plant-based diet throughout and showing no individual
+approaching the C4 signature (approximately −12‰ to −17‰) associated
+with *Spartina*/*Distichlis* salt-marsh vegetation — the correction moves
+every value further from the C4 range, not closer, so this conclusion is
+strengthened rather than altered by it. δ15N values ranged from
 7.05‰ to 15.35‰ across individual means; one individual (1422-02220)
 showed marked within-individual heterogeneity, with four body-feather
 subsamples splitting between a freshwater-typical value (8.1‰) and three

@@ -37,7 +37,7 @@ depends on script `02`'s output, and script `06` depends on both `01` and
 | 3 | `scripts/01_run_assignment.R` | `data/klma_clean.csv`, `data/habitat_prior.tif`, `d2h_GS.tif`, `d18o_GS.tif` | `outputs/rasters/pd_per_feather.tif` (primary model), calibration diagnostic plots |
 | 4 | `scripts/02_summarize_assignment.R` | `data/klma_clean.csv`, `outputs/rasters/pd_per_feather.tif` | `outputs/tables/assignment_summary.csv`, per-individual/population posterior rasters, credible-region rasters |
 | 5 | `scripts/03_make_maps.R` | everything from step 4 | all files in `outputs/maps/`, `outputs/tables/Table1_manuscript.csv` |
-| 6 | `scripts/04_clean_cn_data.R` | `data/klma_clean.csv`, `data/SIBS_CN_230621_Kellerman.csv`, and (for its last step only) `outputs/tables/assignment_summary.csv` | `data/cn_clean.csv`, `data/cn_summary_by_individual.csv`, `data/isotopes_combined_summary.csv`, `data/cn_vs_geography_comparison.csv` |
+| 6 | `scripts/04_clean_cn_data.R` | `data/klma_clean.csv`, `data/SIBS_CN_230621_Kellerman.csv`, `data/SIBS_CN_230621_Kellerman_QC.xlsx`, and (for its last step only) `outputs/tables/assignment_summary.csv` | `data/cn_clean.csv`, `data/cn_summary_by_individual.csv`, `data/isotopes_combined_summary.csv`, `data/cn_vs_geography_comparison.csv` |
 | 7 | `scripts/06_sensitivity_check.R` | `outputs/tables/assignment_summary.csv`, `data/klma_clean.csv`, `data/habitat_prior.tif` | `outputs/tables/sensitivity_comparison.csv`, `outputs/tables/habitat_prior_by_zone.csv` |
 
 Step 7 reruns the whole assignment under five alternative configurations
@@ -337,12 +337,24 @@ not.**
   analytical run from the SIRFER δ2H/δ18O data, but keyed to the same
   envelope IDs), parsing sample labels like `"1422-02216 Breast 1"` into bird
   ID + feather category.
+- **Applies a δ13C bias correction, new this version.** Reads
+  `data/SIBS_CN_230621_Kellerman_QC.xlsx` (the SIBS lab's QA-standard
+  report) directly and computes the offset between two in-house plant
+  standards' (SIBS-pCo, SIBS-pEc) measured δ13C and their known consensus
+  values: +2.097 and +2.010 permil respectively — consistent to within
+  0.09 permil despite the two standards sitting ~27 permil apart, which is
+  why a single additive correction (subtract the mean, 2.053 permil) is
+  justified rather than a more complex range-dependent one. An earlier
+  version of this analysis had *noted* this bias in the text but never
+  actually corrected the data for it; this version does. δ15N showed no
+  comparable bias and is not corrected. Both raw and corrected δ13C are
+  kept in `data/cn_clean.csv`.
 - **Excludes individual `1272-31742`** from the C/N data too (it's a
   separate raw file from the H/O data, so this needed its own explicit
   filter — see the script's comments), for the same reason it's excluded
   everywhere else in this version.
-- Computes per-bird, per-feather-category mean δ13C and δ15N (5 KLMA
-  individuals, 14 samples).
+- Computes per-bird, per-feather-category mean δ13C (corrected) and δ15N (5
+  KLMA individuals, 14 samples).
 - Cross-references those means against the δ2H values for the matching
   bird/feather-category (`data/isotopes_combined_summary.csv`).
 - **Final step (only runs once `outputs/tables/assignment_summary.csv`
@@ -357,8 +369,9 @@ not.**
 itself.** There is no established, fine-resolution continental δ13C/δ15N
 isoscape the way there is for δ2H, so C/N values can't be converted into a
 geographic probability surface. They're used purely as an independent
-qualitative cross-check: δ13C indicates C3 vs. C4 vegetation base (all 6
-KLMA birds here are solidly C3), and δ15N tracks trophic level / marine
+qualitative cross-check: δ13C (bias-corrected) indicates C3 vs. C4
+vegetation base (all 5 KLMA birds here are solidly C3, -27.6 to -24.3
+permil), and δ15N tracks trophic level / marine
 vs. freshwater / agricultural nitrogen enrichment — but with only 3-4 data
 points for the geography comparison, this doesn't support a trend claim
 either way (see `REPORT.md`).

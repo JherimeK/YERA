@@ -80,9 +80,10 @@ data). See "Results, section 1b" for all of these.
   close to a round-number threshold were never meaningfully different in
   the first place.
 - `data/SIBS_CN_230621_Kellerman.csv` (C/N isotopes, separate SIBS lab,
-  same envelope-ID numbering) cross-referenced against
-  `data/SIBS_CN_QC_230621_Kellerman.csv`. Individual `1272-31742`'s C/N
-  samples are excluded here too, for the same reason.
+  same envelope-ID numbering), bias-corrected using the lab's own QA
+  standards in `data/SIBS_CN_230621_Kellerman_QC.xlsx` (see "Carbon/nitrogen
+  isotopes" in Results). Individual `1272-31742`'s C/N samples are
+  excluded here too, for the same reason.
 - Cleaned/merged tables: `data/klma_clean.csv` (`scripts/00_clean_data.R`,
   43 feather samples from 12 KLMA individuals), `data/cn_clean.csv` /
   `data/isotopes_combined_summary.csv` (`scripts/04_clean_cn_data.R`).
@@ -90,8 +91,9 @@ data). See "Results, section 1b" for all of these.
   1422-02212 and a Nape sample from bird 1422-02214 (both implausibly high
   Wt% H/O, possible double-loading), and one Rectrix from 1422-02220 (O:H
   combustion ratio 8.5, far outside the normal 3.6-4.5 range). Separately,
-  the C/N lab's own QC standards showed a consistent ~+2 permil enrichment
-  bias for d13C specifically.
+  the C/N lab's own QA standards showed a consistent ~+2.05 permil
+  enrichment bias for d13C specifically (not d15N); this is now corrected
+  in the reported values -- see "Carbon/nitrogen isotopes" in Results.
 - Growing-season precipitation isoscapes `d2h_GS.tif` / `d18o_GS.tif` (mean
   surfaces only, no prediction-SE grid -- see Limitations).
 - `data/habitat_prior.tif`: wetland/wet-cropland habitat suitability, built
@@ -278,11 +280,28 @@ difference in results between variants is not simply an artifact of
 Mexico habitat being underrepresented in ESA WorldCover.
 
 ### 2. Carbon/nitrogen isotopes: an independent habitat cross-check
-- **d13C is solidly C3 across every KLMA bird** (-25.5 to -22.2 permil) --
-  nowhere near the C4 range (roughly -12 to -17 permil) that would flag
-  *Spartina*/*Distichlis* salt-marsh vegetation. These feathers reflect
-  freshwater sedge-marsh/wet-meadow-type diets, not brackish salt marsh,
-  for whichever molt event each feather represents.
+
+**d13C values reported here are bias-corrected** (new this version). The
+SIBS lab's own QA standards (`data/SIBS_CN_230621_Kellerman_QC.xlsx`) show
+d13C reading a consistent ~+2.05 permil too enriched relative to their
+known consensus values (SIBS-pCo: +2.10 permil; SIBS-pEc: +2.01 permil --
+consistent to within 0.09 permil despite the two standards sitting ~27
+permil apart, so a simple additive correction is justified). An earlier
+version of this report *noted* this bias in passing but never actually
+corrected the data for it; `scripts/04_clean_cn_data.R` now applies the
+correction (subtracting 2.053 permil, the mean of the two standards'
+observed bias) to every sample, and both the raw and corrected values are
+kept in `data/cn_clean.csv` for transparency. d15N showed no comparable
+bias (+0.31, +0.15 permil on the two standards -- within normal
+measurement noise) and was not corrected.
+
+- **d13C is solidly C3 across every KLMA bird** (-27.6 to -24.3 permil,
+  corrected) -- nowhere near the C4 range (roughly -12 to -17 permil) that
+  would flag *Spartina*/*Distichlis* salt-marsh vegetation. The correction
+  moves every value *further* from the C4 range, not closer, so this
+  conclusion is if anything more solidly supported than before. These
+  feathers reflect freshwater sedge-marsh/wet-meadow-type diets, not
+  brackish salt marsh, for whichever molt event each feather represents.
 - **d15N does not reliably track the H/O-based Mexico probability.** This
   was checked directly against the data in an earlier version of this
   report and did not hold up even before the primary-model change (one
@@ -472,3 +491,20 @@ large shared credible regions rather than small ones).
   uncertainty 0.76-1.20 permil for d2H, far tighter than the ~18 permil
   calibration-regression residual scatter that dominates the overall
   uncertainty budget).
+- **This version (C/N bias correction)**: the C/N lab's own QA-standard
+  file (`data/SIBS_CN_230621_Kellerman_QC.xlsx`, reattached by the lead
+  author alongside the original C/N data when asked whether the C/N
+  results could be strengthened) was used to implement an actual
+  correction for the ~+2.05 permil d13C enrichment bias that an earlier
+  version of this report had only noted in passing. `scripts/04_clean_cn_data.R`
+  now parses the QA-standard values directly and applies the correction
+  to every sample (raw values kept alongside corrected ones in
+  `data/cn_clean.csv` for transparency). Corrected d13C values (-27.6 to
+  -24.3 permil) are further from the C4 salt-marsh signature than the
+  uncorrected values were, so the existing "solidly C3" conclusion is
+  strengthened, not changed in direction. This does not add any new
+  individuals to the C/N-vs-geography cross-check (still only 3 KLMA
+  individuals with both measurement types for body feathers) and does
+  not change the Mexico-vs-Pacific-Northwest determination -- there is
+  still no continental d13C/d15N isoscape to convert a diet signal into
+  a geographic probability the way there is for d2H.

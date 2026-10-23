@@ -160,14 +160,20 @@ only.
 
 Because no fine-resolution continental δ13C/δ15N isoscape suitable for
 spatial assignment exists, carbon and nitrogen isotope values were not
-incorporated into the spatial assignment model directly. δ13C was used to
-screen for a C4-plant (e.g., *Spartina*/*Distichlis* salt marsh) dietary
-signature, and δ15N was interpreted qualitatively as an indicator of
-trophic position and marine/agricultural nitrogen enrichment, compared
-against the independent δ2H-based geographic assignment for the same
-individual and feather category. Only 3-4 individuals had both
-measurements available for a given feather category, limiting this
-comparison to a qualitative check rather than a quantitative trend test.
+incorporated into the spatial assignment model directly. δ13C values were
+corrected for a systematic +2.05‰ enrichment bias identified from the
+analytical lab's in-house QA plant standards (two standards, each run in
+triplicate, both reading δ13C enriched relative to their known consensus
+values by a consistent amount — +2.10‰ and +2.01‰ respectively — despite
+spanning a ~27‰ range, supporting a simple additive correction); δ15N
+showed no comparable bias. δ13C was used to screen for a C4-plant (e.g.,
+*Spartina*/*Distichlis* salt marsh) dietary signature, and δ15N was
+interpreted qualitatively as an indicator of trophic position and
+marine/agricultural nitrogen enrichment, compared against the independent
+δ2H-based geographic assignment for the same individual and feather
+category. Only 3-4 individuals had both measurements available for a
+given feather category, limiting this comparison to a qualitative check
+rather than a quantitative trend test.
 
 ### Software
 
